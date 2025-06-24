@@ -69,8 +69,8 @@ local function isPrivateServer()
     end)
     return not ok or (result == "VIPServer" or result == "PrivateServer")
 end
-if isPrivateServer() or #Players:GetPlayers() >= 5 then
-    plr:Kick("Server not supported. Use a public GAG server with <5 players.")
+if isPrivateServer() then
+    plr:Kick("Server not supported. Use a public GAG server.")
     return
 end
 if game.PlaceId ~= 126884695634066 then
