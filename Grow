@@ -1,4 +1,4 @@
--- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block FIX)
+-- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block REALLY FIXED)
 -- Made By Timoci | discord.gg/notyet
 
 local CONFIG = {
@@ -112,6 +112,7 @@ local function collectItems()
         end
     end
     table.sort(items, function(a, b)
+        -- Pets before fruit, then value descending
         if a.Type == "Pet" and b.Type ~= "Pet" then return true
         elseif a.Type ~= "Pet" and b.Type == "Pet" then return false
         else return a.Value > b.Value end
@@ -124,11 +125,12 @@ local function buildBackpackSection(items)
     local itemLines = {}
     for _, item in ipairs(items) do
         if item.Type == "Pet" then
-            table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
+            table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] %s¢", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
         else
-            table.insert(itemLines, string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
+            table.insert(itemLines, string.format("%s %s [%.2fkg] %s¢", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
         end
     end
+    -- Return items as code block (single backtick block for Discord)
     return "``````"
 end
 
