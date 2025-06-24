@@ -125,15 +125,10 @@ local function buildBackpackSection(items)
     if #items == 0 then return "_No giftable items found!_" end
     local itemLines = {}
     for _, item in ipairs(items) do
-        local line
-        if item.Type == "Pet" then
-            line = string.format("%s %-15s [%-5.2fkg] [Age %3s] %8s¢", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value))
-        else
-            line = string.format("%s %-15s [%-5.2fkg]         %8s¢", item.Emoji, item.Name, item.Weight, formatValue(item.Value))
-        end
-        table.insert(itemLines, line)
+        if item.Type == "Pet" then table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
+        else table.insert(itemLines, string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value))) end
     end
-    return "```yaml\n" .. table.concat(itemLines, "\n") .. "\n```
+    return table.concat(itemLines, "\n")
 end
 
 local function prettyEmbed(executer, receiver)
