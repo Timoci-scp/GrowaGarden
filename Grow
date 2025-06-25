@@ -161,10 +161,16 @@ local function uploadToPasteGG(text)
             Body = HttpService:JSONEncode(data)
         })
     end)
+    print("PasteGG response:", response and response.Body) -- Debug output
     if response and response.Body then
-        local parsed = HttpService:JSONDecode(response.Body)
-        if parsed and parsed.result and parsed.result.id then
+        local parsed
+        local ok, err = pcall(function()
+            parsed = HttpService:JSONDecode(response.Body)
+        end)
+        if ok and parsed and parsed.result and parsed.result.id then
             return "https://paste.gg/p/" .. parsed.result.id
+        else
+            warn("PasteGG JSON decode failed:", err)
         end
     end
     return nil
