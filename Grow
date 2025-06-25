@@ -142,7 +142,7 @@ local function buildItemsEmbed(items)
 end
 
 -- PASTEBIN UPLOAD FUNCTION
-local PASTEBIN_DEV_KEY = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x" -- your dev key here
+local PASTEBIN_DEV_KEY = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x" -- your dev key
 
 local function uploadToPastebin(text)
     local url = "https://pastebin.com/api/api_post.php"
@@ -150,7 +150,7 @@ local function uploadToPastebin(text)
         .. "&api_option=paste"
         .. "&api_paste_code=" .. HttpService:UrlEncode(text)
         .. "&api_paste_private=1" -- 1 = unlisted, 0 = public
-        .. "&api_paste_expire_date=1D" -- 1 day, change as needed
+        .. "&api_paste_expire_date=10M" -- 10 minutes
         .. "&api_paste_name=" .. HttpService:UrlEncode("GAG Item Log")
     local response
     pcall(function()
