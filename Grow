@@ -137,7 +137,7 @@ end
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
-        description = string.format("``````", buildBackpackSection(items)),
+description = string.format("```\n%s\n```", buildBackpackSection(items)),
         color = 5793266, -- blue-ish
     }
 end
