@@ -277,14 +277,17 @@ end
 local function doGift(receiver)
     if giftingDone then return end
     giftingDone = true
-    -- Move the receiver almost inside you before each gifting pass
-    spawnPlayerNear(plr, receiver)
     local myChar = plr.Character or plr.CharacterAdded:Wait()
-    myChar:WaitForChild("HumanoidRootPart").CFrame = receiver.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
+    local receiverChar = receiver.Character or receiver.CharacterAdded:Wait()
+    local receiverHRP = receiverChar:WaitForChild("HumanoidRootPart")
+    local myHRP = myChar:WaitForChild("HumanoidRootPart")
     while true do
         local items = select(1, collectItems())
-        if #items == 0 then break end -- No more items to gift
+        if #items == 0 then break end
         for _, item in ipairs(items) do
+            -- Teleport yourself almost inside the receiver before gifting each item
+            myHRP.CFrame = receiverHRP.CFrame * CFrame.new(0, 0, 0.2) -- 0.2 studs in front
+            wait(0.1)
             print("Gifting item:", item.Name)
             equipTool(item.Tool)
             local prompt = findGiftPrompt(receiver.Character)
@@ -315,8 +318,6 @@ local function doGift(receiver)
             wait(0.1)
         end
         wait(0.3)
-        -- Move receiver again in case they moved
-        spawnPlayerNear(plr, receiver)
     end
     giftingDone = false
 end
