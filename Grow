@@ -275,12 +275,16 @@ local function doGift(receiver)
         local prompt = findGiftPrompt(receiver.Character)
         if prompt then
             local t0 = os.clock()
-            repeat task.wait(0.09) if (os.clock() - t0) > 4 then break end until prompt.Enabled
+            repeat task.wait(0.09) if (os.clock() - t0) > 6 then break end until prompt.Enabled
             bypassProximityPrompt(prompt)
-            wait(0.18)
+            wait(0.2)
         end
-        item.Tool.Parent = backpack
-        wait(0.08)
+        -- Wait until the item is no longer in your character (gifted or returned to backpack)
+        local waitStart = os.clock()
+        while item.Tool.Parent == plr.Character and (os.clock() - waitStart) < 5 do
+            task.wait(0.1)
+        end
+        wait(0.1)
     end
 end
 
